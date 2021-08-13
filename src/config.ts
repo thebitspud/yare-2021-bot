@@ -1,0 +1,11 @@
+export const /* BOT SETTINGS */
+	BOT_VERSION = "Yaresuo 1.0",
+	MAX_SUPPLY = 51;
+
+export const /* GAME CONFIG */
+	CENTER_STAR = star_p89,
+	ENERGIZE_RANGE = 200,
+	SIGHT_RANGE = 400,
+	MERGE_RANGE = 10,
+	EXPLODE_RANGE = 160,
+	EXPLODE_DAMAGE = 10;
