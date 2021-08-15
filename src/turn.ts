@@ -1,27 +1,5 @@
-import * as Cfg from "./config";
+import { BOT_VERSION } from "./init";
 import * as Utils from "./utils";
-
-/* MEMORY INITIALIZATION */
-
-if (!(memory?.init === Cfg.BOT_VERSION)) {
-	memory = {
-		init: Cfg.BOT_VERSION,
-		strategy: "economic",
-		allCenter: false,
-		myStar: Utils.nearest(base, Object.values(stars)),
-		enemyStar: Utils.nearest(enemy_base, Object.values(stars)),
-		loci: {},
-	};
-
-	memory.loci = {
-		baseToStar: Utils.nextPosition(base, memory.myStar),
-		baseToCenter: Utils.nextPosition(base, Cfg.CENTER_STAR),
-		starToBase: Utils.nextPosition(memory.myStar, base),
-		centerToBase: Utils.nextPosition(Cfg.CENTER_STAR, base),
-		centerToOutpost: Utils.midpoint(Cfg.CENTER_STAR, outpost),
-		outpostAntipode: Utils.add(Utils.vectorTo(outpost, Cfg.CENTER_STAR), Cfg.CENTER_STAR.position),
-	};
-}
 
 /* FRIENDLY UNITS */
 
@@ -29,40 +7,64 @@ export const myUnits = my_spirits.filter((s) => s.hp > 0);
 
 export let myEnergy = 0;
 export let myCapacity = 0;
+export let mySupply = 0;
 
 for (const s of myUnits) {
+	if (!s.mark) s.mark = "idle";
 	myEnergy += s.energy;
 	myCapacity += s.energy_capacity;
+	mySupply += s.size;
 }
+
+export const allyOutpost = outpost.control === this_player_id;
+export const enemyOutpost = outpost.control !== this_player_id && outpost.energy > 0;
 
 /* ENEMY UNITS */
 
-export const enemyUnits = Object.values(spirits).filter((s) => !my_spirits.includes(s) && s.hp > 0);
+export const enemyUnits = Object.values(spirits).filter(
+	(s) => s.hp > 0 && !myUnits.includes(s)
+);
 
 export const sqrEnemy = enemy_base.shape === "squares";
 export const triEnemy = enemy_base.shape === "triangles";
 export const enemyShapePower = sqrEnemy ? 0.6 : triEnemy ? 0.85 : 1;
 
-export let outpostEnemyPower = 0;
-export let enemyEnergy = 0;
-export let enemyCapacity = 0;
-
 /**
  * NOTE: there is no overlap between <near>, <mid>, and <far>
  * Use [...invaders.near, ...invaders.mid, ...invaders.far] for combined list
  */
-export const invaders: { near: Spirit[]; med: Spirit[]; far: Spirit[]; threat: number } = {
+export const invaders: {
+	near: Spirit[];
+	med: Spirit[];
+	far: Spirit[];
+	threat: number;
+	supply: number;
+} = {
 	near: [],
 	med: [],
 	far: [],
 	threat: 0,
+	supply: 0,
 };
+
+// Not sure whether it's a good idea to account for enemy shape power
+// when computing invader threat and outpost enemy power
+// TODO: test bot with both settings and then decide
+export let outpostEnemyPower = 0;
+export let enemyEnergy = 0;
+export let enemyCapacity = 0;
+export let enemyBaseSupply = 0;
 
 for (const e of enemyUnits) {
 	const baseDist = Utils.dist(e, base);
 	if (baseDist <= 800) {
 		if (baseDist <= 600) {
 			if (baseDist <= 400) {
+				if (baseDist <= 200) {
+					// Amount of energy invaders can unload onto base this turn
+					// Multiply by 2 for max potential damage
+					invaders.supply += Math.min(e.size, e.energy);
+				}
 				invaders.near.push(e);
 			} else invaders.med.push(e);
 		} else invaders.far.push(e);
@@ -81,63 +83,86 @@ for (const e of enemyUnits) {
 		outpostEnemyPower += e.energy * outpostDistFactor;
 	}
 
+	// Checking how much enemy units can heal the enemy base for
+	if (Utils.inRange(e, enemy_base)) {
+		enemyBaseSupply += Math.min(e.size, e.energy);
+	}
+
 	enemyEnergy += e.energy;
 	enemyCapacity += e.energy_capacity;
 }
 
-/* ROLE COUNT */
-
-export const idealDefenders = Math.ceil(invaders.threat / (my_spirits[0].energy_capacity ?? 10));
-export const idealScouts = Math.ceil(2 / my_spirits[0].size) + Math.ceil(myUnits.length / 8);
-export const maxMainHarvesters = Utils.energyPerTick(memory.myStar) * 4;
-export const canHarvestCenter = Cfg.CENTER_STAR.energy > 0 && outpost.control === this_player_id;
-
 /* MACRO STRATEGY */
 
-export const isAttacking = ["rally", "all-in"].includes(memory.strategy);
-const powerRatio = myEnergy / (enemyEnergy * enemyShapePower);
-const canBeatBase = myEnergy * 2 > enemy_base.energy;
-const canBeatAll = myCapacity > enemy_base.energy + enemyCapacity * enemyShapePower * 2;
-const readyToAttack = myUnits.length > Cfg.MAX_SUPPLY || canBeatAll;
+export const idealDefenders = Math.ceil(invaders.threat / (memory.mySize * 10));
+export const idealScouts = Math.ceil(3 / memory.mySize) + Math.ceil(myUnits.length / 8);
+export const maxWorkers = getMaxWorkers();
 
-// Starting an all-in attack
+function getMaxWorkers(): number {
+	let energyRegenCap = Utils.energyPerTick(memory.myStar);
+	if (memory.myStar.energy < 500) energyRegenCap--;
+	else if (memory.myStar.energy > 900) energyRegenCap++;
+
+	const workerEfficiency = 1 / (memory.settings.haulRelayRatio + 1);
+	return Math.floor(energyRegenCap / workerEfficiency);
+}
+
+export const isAttacking = ["rally", "all-in"].includes(memory.strategy);
+const canBeatBase = myEnergy * 2 > enemy_base.energy + enemyBaseSupply;
+const canBeatAll = myCapacity > enemy_base.energy + enemyCapacity * enemyShapePower * 2;
+const readyToAttack = mySupply >= memory.settings.attackSupply || canBeatAll;
+
+export const canHarvestCenter = memory.centerStar.energy > 0 && allyOutpost;
+
+// Starting an attack on the enemy base
 if (!isAttacking && readyToAttack && canBeatBase) {
 	memory.strategy = "rally";
-	memory.allCenter = Cfg.CENTER_STAR.energy * 1.2 >= myCapacity - myEnergy;
+	const centerHasEnergy = memory.centerStar.energy >= myCapacity - myEnergy;
+	memory.allCenter = canHarvestCenter && centerHasEnergy;
 }
 
-// Retreating if bot cannot win fight
-if (!canBeatBase && powerRatio <= 1) {
-	memory.strategy = "economic";
-	memory.allCenter = false;
-}
-
-export const rallyStar = memory.allCenter ? Cfg.CENTER_STAR : memory.myStar;
+export const rallyStar = memory.allCenter ? memory.centerStar : memory.myStar;
 export const rallyPosition = memory.allCenter
 	? memory.loci.centerToOutpost
 	: Utils.nextPosition(base, memory.loci.outpostAntipode);
 
 if (memory.strategy === "rally") {
-	let groupedSpirits = 0;
-	for (const spirit of my_spirits) {
-		if (Utils.dist(spirit, rallyPosition) <= 50) {
-			groupedSpirits++;
+	let groupedSupply = 0;
+	for (const s of my_spirits) {
+		if (Utils.dist(s, rallyPosition) <= 50) {
+			groupedSupply += s.size;
 		}
 	}
 
-	if (groupedSpirits >= (myUnits.length - idealDefenders) * 0.9) {
+	// Waiting until enough units have arrived before all-inning
+	if (groupedSupply > (mySupply - idealDefenders) * 0.6) {
 		memory.strategy = "all-in";
 	}
 }
 
-/* LOGGING TURN DATA */
+const powerRatio = myEnergy / (enemyEnergy * enemyShapePower);
 
-console.log(`${this_player_id} // ${Cfg.BOT_VERSION} // Turn ${tick}`);
-console.log(`Macro:  ${memory.strategy} // Attacking: ${isAttacking}`);
-console.log(`${myUnits.length} ${base.shape} vs. ${enemyUnits.length} ${enemy_base.shape}`);
-const energyString = `Energy: ${myEnergy}/${myCapacity} vs. ${enemyEnergy}/${enemyCapacity}`;
-console.log(energyString + ` // Power Ratio: ${powerRatio.toFixed(2)}`);
-const invaderCountString = `[${invaders.near.length}/${invaders.med.length}/${invaders.far.length}]`;
-console.log(`Threat: ${invaders.threat.toFixed(2)} from ${invaderCountString} enemies`);
-console.log("Defenders: " + idealDefenders + " // Scouts: " + idealScouts);
-console.log("Harvesters: " + maxMainHarvesters + " // Harvest Center: " + canHarvestCenter);
+// Retreating if bot cannot win fight
+if (memory.strategy === "all-in" && !canBeatBase && powerRatio < 1) {
+	memory.strategy = "economic";
+	memory.allCenter = false;
+}
+
+// Stay away from the outpost
+export const idlePosition =
+	enemyOutpost && outpost.energy > 450
+		? memory.loci.baseToStar
+		: Utils.nextPosition(memory.loci.baseToCenter, memory.myStar);
+
+/** Logs turn data once per tick */
+export function log() {
+	console.log(`${this_player_id} // ${BOT_VERSION} // Turn ${tick}`);
+	console.log(`Strategy:  ${memory.strategy} // Attacking: ${isAttacking}`);
+	console.log(
+		`${myUnits.length} ${base.shape} vs. ${enemyUnits.length} ${enemy_base.shape}`
+	);
+	const energyString = `Energy: ${myEnergy}/${myCapacity} vs. ${enemyEnergy}/${enemyCapacity}`;
+	console.log(energyString + ` // Power Ratio: ${powerRatio.toFixed(2)}`);
+	const invaderCountString = `[${invaders.near.length}/${invaders.med.length}/${invaders.far.length}]`;
+	console.log(`Threat: ${invaders.threat.toFixed(2)} from ${invaderCountString} enemies`);
+}

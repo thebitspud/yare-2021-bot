@@ -41,7 +41,7 @@
   },
   "prettier": {
     "tabWidth": 2,
-    "printWidth": 80,
+    "printWidth": 90,
     "useTabs": true
   }
 }

@@ -1,19 +1,21 @@
+import "./init";
 import * as Turn from "./turn";
-import { updateRole } from "./roles";
-import { moveUnit } from "./movement";
-import { energize } from "./energize";
+import * as Roles from "./roles";
+import { findMove } from "./movement";
+import { pickTarget } from "./energize";
 
 const start = Date.now();
 
-/* MARK, MOVE, ENERGIZE */
+/* MARK -> ENERGIZE -> MOVE */
+// It is better to select energize targets before making movement decisions
+// because the engine processes energize() commands before move() commands.
 
-let index = 0;
-for (const s of Turn.myUnits) {
-	updateRole(s, index);
-	moveUnit(s, index);
-	energize(s);
+Roles.update();
+for (const s of Turn.myUnits) pickTarget(s);
+for (const s of Turn.myUnits) findMove(s);
 
-	index++;
-}
+/* LOGGING */
 
+Turn.log();
+Roles.log();
 console.log("Computation Time: " + (Date.now() - start) + "ms");

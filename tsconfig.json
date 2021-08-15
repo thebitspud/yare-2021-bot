@@ -26,7 +26,10 @@
     "experimentalDecorators": true,
     "resolveJsonModule": true
   },
-  "typeRoots": ["./typings", "./node_modules/@types"],
+  "typeRoots": ["typings", "node_modules/@types"],
   "exclude": ["node_modules"],
-  "include": ["src"]
+  "include": [
+    "src",
+    "typings"
+  ]
 }
