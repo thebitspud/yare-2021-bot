@@ -12,10 +12,7 @@ export const register: { [key in MarkState]: Spirit[] } = {
 	retreat: [],
 };
 
-for (const role in register) {
-	register[<MarkState>role] = Turn.myUnits.filter((s) => s.mark === role);
-}
-
+for (const s of Turn.myUnits) register[s.mark].push(s);
 const workerRatio = memory.settings.haulRelayRatio;
 
 /** Sets the role of a spirit and updates the current role register to match */
@@ -23,10 +20,11 @@ function setRole(s: Spirit, role: MarkState) {
 	if (s.mark === role) return;
 
 	const index = register[s.mark].indexOf(s);
-	if (index != -1) register[s.mark].splice(index);
+	if (index < 0) return;
 
-	s.set_mark(role);
+	register[s.mark].splice(index, 1);
 	register[role].push(s);
+	s.set_mark(role);
 }
 
 /** Updates the roles of all spirits according to current turn state */
@@ -47,11 +45,16 @@ function removeExtras() {
 		// Non-worker units with low energy should always retreat and refill
 		if (energyRatio < 0.2 && retreatable.includes(s.mark)) {
 			setRole(s, "retreat");
+			continue;
 		}
 
-		if (energyRatio >= 0.9 && s.mark === "retreat") {
-			setRole(s, "idle");
+		// Scouts may retreat to center at a higher cutoff
+		if (energyRatio < 0.5 && s.mark === "scout" && Turn.canHarvestCenter) {
+			setRole(s, "retreat");
+			continue;
 		}
+
+		if (energyRatio >= 0.9 && s.mark === "retreat") setRole(s, "idle");
 	}
 
 	// ATTACKERS
@@ -70,7 +73,7 @@ function removeExtras() {
 	}
 
 	// WORKERS
-	while ([...register.haul, ...register.relay].length > Math.max(Turn.maxWorkers, 0)) {
+	while (register.haul.length + register.relay.length > Math.max(Turn.maxWorkers, 0)) {
 		const removeHauler = register.haul.length > (register.relay.length - 1) * workerRatio;
 		const list = removeHauler ? register.haul : register.relay;
 		if (list.length > 0) setRole(Utils.nearest(memory.myStar, list), "idle");
@@ -97,7 +100,7 @@ function assignRoles() {
 		}
 
 		// If no idle units, try to fill with valid workers
-		const workers = [...register.haul, ...register.relay];
+		const workers = register.haul.concat(register.relay);
 		const validWorkers = workers.filter((s) => Utils.energyRatio(s) > 0.5);
 		if (validWorkers.length) {
 			setRole(Utils.nearest(base, validWorkers), "defend");
@@ -158,5 +161,5 @@ export function log() {
 
 	console.log(defendString + " // " + scoutString);
 	console.log(workerString + " // " + `Attackers: ${register.attack.length}`);
-	console.log(`Retreating: ${register.attack.length} // Idle: ${register.idle.length}`);
+	console.log(`Retreating: ${register.retreat.length} // Idle: ${register.idle.length}`);
 }

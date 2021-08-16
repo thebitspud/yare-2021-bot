@@ -1,7 +1,6 @@
 import * as Utils from "./utils";
 import * as Turn from "./turn";
 import "./roles";
-import { energyRatio } from "./utils";
 
 /** Attempts to select an optimal energize target for the given spirit */
 export function pickTarget(s: Spirit): void {
@@ -35,13 +34,12 @@ export function pickTarget(s: Spirit): void {
 	}
 
 	// Need to retain some energy on spirit for combat efficiency
-	if (Utils.inRange(s, outpost) && Utils.energyRatio(s) >= 0.5) {
+	if (Utils.inRange(s, outpost)) {
 		if (Turn.isAttacking) {
-			const vacantCapacity = Turn.myCapacity - Turn.myEnergy;
-			const starHasEnergy = memory.centerStar.energy > vacantCapacity;
+			const starHasEnergy = memory.centerStar.energy > Turn.myCapacity - Turn.myEnergy;
 			const nearEmpower = outpost.energy > 450 && outpost.energy < 550;
 			const shouldEnergize = memory.centerStar.energy > outpost.energy || nearEmpower;
-			const readyToEnergize = memory.strategy !== "all-in";
+			const readyToEnergize = memory.strategy !== "all-in" && Utils.energyRatio(s) >= 0.5;
 
 			// Energize outpost if attacking through center and conditions met
 			if (starHasEnergy && shouldEnergize && readyToEnergize) {
@@ -50,7 +48,7 @@ export function pickTarget(s: Spirit): void {
 		} else {
 			// Energize outpost if low or controlled by enemy
 			const outpostLow = outpost.energy < Math.max(25, Turn.outpostEnemyPower);
-			if (Turn.enemyOutpost || outpostLow) {
+			if (Turn.enemyOutpost || (outpostLow && Utils.energyRatio(s) >= 0.5)) {
 				return energize(s, outpost, Turn.enemyOutpost ? -2 : 1);
 			}
 		}
@@ -123,7 +121,7 @@ export function pickTarget(s: Spirit): void {
 	}
 
 	// If no other energize actions available, harvest from star and energize self
-	if (Utils.inRange(s, nearestStar) && energyRatio(s) < 1) {
+	if (Utils.inRange(s, nearestStar) && Utils.energyRatio(s) < 1) {
 		return energize(s, s, 2);
 	}
 }

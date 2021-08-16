@@ -107,15 +107,15 @@ export function findMove(s: Spirit): void {
 				}
 			} else {
 				const outpostLow = outpost.energy < Math.max(25, Turn.outpostEnemyPower);
-				if (outpostLow) {
-					// If outpost is low and not owned by enemy, move towards it
-					return s.move(Utils.nextPosition(outpost, s));
-				} else if (Turn.outpostEnemyPower > scoutPower + outpost.energy) {
+				if (Turn.outpostEnemyPower > scoutPower + outpost.energy) {
 					// If cannot fight at all, get out of outpost range
 					return s.move(Utils.nextPosition(outpost, s, 402));
 				} else if (Turn.outpostEnemyPower > scoutPower) {
 					// If need outpost to fight, retreat to center
 					return s.move(loci.centerToOutpost);
+				} else if (outpostLow && s.energy > 0.5) {
+					// If outpost is low or unowned, move to it
+					return s.move(Utils.nextPosition(outpost, s));
 				} else {
 					// Attempt to block enemy base
 					return s.move(Utils.nextPosition(enemy_base, outpost, 400));
@@ -156,28 +156,32 @@ export function findMove(s: Spirit): void {
 
 /**
  * Moves the specified unit towards a target while avoiding hostile outposts
- * @param spirit player unit to receive move command
+ * @param s player unit to receive move command
  * @param target position or entity to move towards
  */
-function safeMove(spirit: Spirit, target: Position | Entity) {
+function safeMove(s: Spirit, target: Position | Entity) {
 	if ("position" in target) target = target.position;
 	// Just move normally if outpost is not hostile
-	if (!Turn.enemyOutpost) return spirit.move(target);
+	if (!Turn.enemyOutpost) return s.move(target);
 
 	// Movement vector that spirit would follow normally and resulting position
-	const unsafeNext = Utils.nextPosition(spirit, target, spirit.move_speed);
+	const unsafeNext = Utils.nextPosition(s, target, 20);
+
+	// Size 20 vector from spirit to outpost used to calculate rotated vectors
+	const toOutpost = Utils.normalize(Utils.vectorTo(s, outpost), 20);
 
 	// Use outer range if outpost is empowered or close to becoming empowered
 	const range = outpost.energy > 400 ? 600 : 400;
-	if (Utils.inRange(unsafeNext, outpost, range)) {
-		// Size 21 vector from spirit to outpost used to calculate rotated vectors
-		const toOutpost = Utils.normalize(Utils.vectorTo(spirit, outpost), 21);
 
+	if (Utils.inRange(s, outpost, range + 1)) {
+		// Move out of outpost range if currently inside
+		s.move(Utils.add(s, Utils.multiply(toOutpost, -1), Utils.vectorTo(s, unsafeNext)));
+	} else if (Utils.inRange(unsafeNext, outpost, range + 1)) {
 		// Movement vectors tangential to outpost range circle
-		const cwTo = Utils.add(spirit, [-toOutpost[1], toOutpost[0]]);
-		const ccwTo = Utils.add(spirit, [toOutpost[1], -toOutpost[0]]);
+		const cwTo = Utils.add(s, [-toOutpost[1], toOutpost[0]]);
+		const ccwTo = Utils.add(s, [toOutpost[1], -toOutpost[0]]);
 		const bestMove = Utils.dist(target, cwTo) < Utils.dist(target, ccwTo) ? cwTo : ccwTo;
 
-		spirit.move(bestMove);
-	} else spirit.move(target);
+		s.move(bestMove);
+	} else s.move(target);
 }
