@@ -2,7 +2,8 @@ import "./init";
 import * as Turn from "./turn";
 import * as Roles from "./roles";
 import { findMove } from "./movement";
-import { pickTarget } from "./energize";
+import { useEnergize } from "./energize";
+import { useMerge } from "./abilities";
 
 const start = Date.now();
 
@@ -11,8 +12,11 @@ const start = Date.now();
 // because the engine processes energize() commands before move() commands.
 
 Roles.update();
-for (const s of Turn.myUnits) pickTarget(s);
+for (const s of Turn.myUnits) useEnergize(s);
 for (const s of Turn.myUnits) findMove(s);
+if (base.shape === "circles") {
+	for (const s of Turn.myUnits) useMerge(<CircleSpirit>s);
+}
 
 /* LOGGING */
 

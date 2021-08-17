@@ -9,7 +9,7 @@ export const register: { [key in MarkState]: Spirit[] } = {
 	attack: [],
 	defend: [],
 	scout: [],
-	retreat: [],
+	refuel: [],
 };
 
 for (const s of Turn.myUnits) register[s.mark].push(s);
@@ -25,6 +25,7 @@ function setRole(s: Spirit, role: MarkState) {
 	register[s.mark].splice(index, 1);
 	register[role].push(s);
 	s.set_mark(role);
+	if (memory.settings.debug) s.shout(s.mark);
 }
 
 /** Updates the roles of all spirits according to current turn state */
@@ -36,29 +37,29 @@ export function update(): void {
 
 /** Removes units from over-saturated roles and sets them to idle */
 function removeExtras() {
-	const retreatable: MarkState[] = ["defend", "attack", "scout", "idle"];
+	const refuelable: MarkState[] = ["defend", "attack", "scout", "idle"];
 
-	// RETREAT
+	// REFUEL
 	// This must be called before the other extra-removing methods
 	for (const s of Turn.myUnits) {
 		const energyRatio = Utils.energyRatio(s);
-		// Non-worker units with low energy should always retreat and refill
-		if (energyRatio < 0.2 && retreatable.includes(s.mark)) {
-			setRole(s, "retreat");
+		// Non-worker units with low energy should always retreat and refuel
+		if (energyRatio < 0.2 && refuelable.includes(s.mark)) {
+			setRole(s, "refuel");
 			continue;
 		}
 
-		// Scouts may retreat to center at a higher cutoff
+		// Scouts may attempt to refuel at a higher cutoff
 		if (energyRatio < 0.5 && s.mark === "scout" && Turn.canHarvestCenter) {
-			setRole(s, "retreat");
+			setRole(s, "refuel");
 			continue;
 		}
 
-		if (energyRatio >= 0.9 && s.mark === "retreat") setRole(s, "idle");
+		if (energyRatio >= 0.9 && s.mark === "refuel") setRole(s, "idle");
 	}
 
 	// ATTACKERS
-	if (!Turn.isAttacking && register.attack.length > 0) {
+	if (!Turn.isAttacking && register.attack.length) {
 		register.attack.forEach((s) => setRole(s, "idle"));
 	}
 
@@ -73,11 +74,11 @@ function removeExtras() {
 	}
 
 	// WORKERS
-	while (register.haul.length + register.relay.length > Math.max(Turn.maxWorkers, 0)) {
+	// Should generally avoid shuffling around worker roles
+	if ([...register.relay, ...register.haul].length > Math.max(Turn.maxWorkers, 0) + 3) {
 		const removeHauler = register.haul.length > (register.relay.length - 1) * workerRatio;
 		const list = removeHauler ? register.haul : register.relay;
-		if (list.length > 0) setRole(Utils.nearest(memory.myStar, list), "idle");
-		else break;
+		if (list.length) setRole(Utils.nearest(memory.myStar, list), "idle");
 	}
 }
 
@@ -85,8 +86,8 @@ function assignRoles() {
 	// ATTACKERS
 	if (Turn.isAttacking) {
 		for (const s of Turn.myUnits) {
-			// When attacking, only other valid role is defense
-			if (s.mark !== "defend") setRole(s, "attack");
+			// When attacking, only other valid roles are defend and refuel
+			if (!["defend", "refuel"].includes(s.mark)) setRole(s, "attack");
 		}
 	}
 
@@ -100,16 +101,20 @@ function assignRoles() {
 		}
 
 		// If no idle units, try to fill with valid workers
-		const workers = register.haul.concat(register.relay);
-		const validWorkers = workers.filter((s) => Utils.energyRatio(s) > 0.5);
+		const validWorkers = [...register.relay, ...register.haul].filter(
+			(s) => Utils.energyRatio(s) > 0.5
+		);
 		if (validWorkers.length) {
 			setRole(Utils.nearest(base, validWorkers), "defend");
 			continue;
 		}
 
-		// If attacking, can fill with attackers
-		const validAttackers = register.attack.filter(
-			(s) => Utils.energyRatio(s) === 1 && Utils.dist(s, base) < 800 && s.size === 1
+		// Otherwise, can fill with attackers/scouts if necessary
+		const validAttackers = [...register.attack, ...register.scout].filter(
+			(s) =>
+				Utils.energyRatio(s) === 1 &&
+				Utils.dist(s, base) < 800 &&
+				s.size === memory.mySize
 		);
 		if (validAttackers.length) {
 			setRole(Utils.nearest(base, validAttackers), "defend");
@@ -120,7 +125,7 @@ function assignRoles() {
 	if (Turn.isAttacking) return;
 
 	// SCOUTS
-	while (register.scout.length + register.retreat.length < Turn.idealScouts) {
+	while (register.scout.length + register.refuel.length < Turn.idealScouts) {
 		// Fill with idle units when possible
 		if (register.idle.length) {
 			setRole(Utils.nearest(memory.centerStar, register.idle), "scout");
@@ -161,5 +166,5 @@ export function log() {
 
 	console.log(defendString + " // " + scoutString);
 	console.log(workerString + " // " + `Attackers: ${register.attack.length}`);
-	console.log(`Retreating: ${register.retreat.length} // Idle: ${register.idle.length}`);
+	console.log(`Refueling: ${register.refuel.length} // Idle: ${register.idle.length}`);
 }

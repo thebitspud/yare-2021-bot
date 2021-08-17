@@ -52,10 +52,10 @@ export function vectorTo(start: Position | Entity, target: Position | Entity): P
 }
 
 /**
- * Returns true if the distance between two positions is below a certain value
+ * Returns true if the distance between two positions is below <range>
  * @param from first entity or position
  * @param to second entity or position
- * @param range (optional, default: ENERGIZE_RANGE) max distance to return true
+ * @param range (optional, default: ENERGIZE_RANGE)
  */
 export function inRange(
 	from: Position | Entity,

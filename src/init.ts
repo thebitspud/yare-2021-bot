@@ -1,14 +1,16 @@
 import * as Utils from "./utils";
 
-export const BOT_VERSION = "Yaresuo 2.0";
+export const BOT_VERSION = "Yaresuo 2.1";
 
 if (memory.init !== BOT_VERSION) {
 	memory = {
 		init: BOT_VERSION,
 		settings: {
+			debug: false,
 			attackSupply: 51,
+			attackGroupSize: 0.7, // in [0, 1]
 			haulRelayRatio: 2.6,
-			debug: true,
+			maxMergeSize: 16,
 		},
 		config: {
 			energizeRange: 200,
@@ -34,8 +36,8 @@ if (memory.init !== BOT_VERSION) {
 		centerToBase: Utils.nextPosition(memory.centerStar, base),
 		centerToOutpost: Utils.midpoint(memory.centerStar, outpost),
 		outpostAntipode: Utils.add(
-			Utils.vectorTo(outpost, memory.centerStar),
-			memory.centerStar
+			memory.centerStar,
+			Utils.normalize(Utils.vectorTo(outpost, memory.centerStar), 199)
 		),
 	};
 }
