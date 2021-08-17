@@ -1,6 +1,7 @@
 import * as Utils from "./utils";
+import * as pkg from "../package.json";
 
-export const BOT_VERSION = "Yaresuo 2.1";
+export const BOT_VERSION = pkg.name[0] + " " + pkg.version;
 
 if (memory.init !== BOT_VERSION) {
 	memory = {
