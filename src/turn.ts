@@ -104,17 +104,13 @@ export const maxWorkers = memory.settings.attackSupply;
 
 export const isAttacking = ["rally", "all-in"].includes(memory.strategy);
 const canBeatBase = myEnergy * 2 > enemy_base.energy + enemyBaseSupply;
-//const canBeatAll = myCapacity > enemy_base.energy + enemyCapacity * enemyShapePower * 2;
-const readyToAttack = mySupply >= memory.settings.attackSupply; // || canBeatAll
+const canBeatAll = myCapacity > enemy_base.energy + enemyCapacity * enemyShapePower * 2.5;
+const readyToAttack = mySupply >= memory.settings.attackSupply || canBeatAll;
 
 export const canHarvestCenter = memory.centerStar.active_in < 25 && !enemyOutpost;
 
 // Starting an attack on the enemy base
-if (!isAttacking && readyToAttack && canBeatBase) {
-	memory.strategy = "rally";
-	const centerHasEnergy = memory.centerStar.energy >= myCapacity - myEnergy;
-	memory.allCenter = canHarvestCenter && centerHasEnergy;
-}
+if (!isAttacking && readyToAttack && canBeatBase) memory.strategy = "rally";
 
 export const rallyStar = memory.allCenter ? memory.centerStar : memory.myStar;
 export const rallyPosition = allyOutpost
@@ -127,6 +123,11 @@ if (memory.strategy === "rally") {
 		if (Utils.dist(s, rallyPosition) <= 100) {
 			groupedSupply += s.size;
 		}
+	}
+
+	if (!memory.allCenter) {
+		const centerHasEnergy = memory.centerStar.energy * 0.8 > myCapacity - myEnergy;
+		memory.allCenter = canHarvestCenter && centerHasEnergy;
 	}
 
 	// Waiting until enough units have arrived before all-inning

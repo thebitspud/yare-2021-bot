@@ -90,10 +90,10 @@ export function nextPosition(
 
 /**
  * Finds the entity closest to a given position out of the specified list
- * <br> To find the farthest entity, see sister function farthest()
+ * <br>To find the farthest entity, see sister function farthest()
  * @param from position to search from
  * @param list list of entities to choose from
- * CONSTRAINT: list cannot be empty
+ * <br>CONSTRAINT: list cannot be empty
  */
 export function nearest<T extends Entity>(from: Position | Entity, list: T[]): T {
 	let nearestEntity = list[0];
@@ -112,10 +112,10 @@ export function nearest<T extends Entity>(from: Position | Entity, list: T[]): T
 
 /**
  * Finds the entity farthest from a given position out of the specified list
- * <br> To find the nearest entity, see sister function nearest()
+ * <br>To find the nearest entity, see sister function nearest()
  * @param from position to search from
  * @param list list of entities to choose from
- * CONSTRAINT: list cannot be empty
+ * <br>CONSTRAINT: list cannot be empty
  */
 export function farthest<T extends Entity>(from: Position | Entity, list: T[]): T {
 	let farthestEntity = list[0];
@@ -134,9 +134,23 @@ export function farthest<T extends Entity>(from: Position | Entity, list: T[]): 
 
 /**
  * Returns the entity from the given list with the lowest energy
- * CONSTRAINT: list cannot be empty
+ * <br>To get the highest energy entity, see sister function highestEnergy()
+ * <br>CONSTRAINT: list cannot be empty
  */
 export function lowestEnergy<T extends Entity>(list: T[]): T {
+	let lowest = list[0];
+	for (const entity of list) {
+		if (entity.energy < lowest.energy) lowest = entity;
+	}
+	return lowest;
+}
+
+/**
+ * Returns the entity from the given list with the highest energy
+ * <br>To get the lowest energy entity, see sister function lowestEnergy()
+ * <br>CONSTRAINT: list cannot be empty
+ */
+export function highestEnergy<T extends Entity>(list: T[]): T {
 	let lowest = list[0];
 	for (const entity of list) {
 		if (entity.energy < lowest.energy) lowest = entity;

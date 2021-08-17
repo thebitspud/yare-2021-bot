@@ -20,7 +20,12 @@ export function useEnergize(s: Spirit): void {
 
 	// Always attack enemies in range, prioritizing the lowest (positive) energy enemies first
 	if (enemyTargets.length) {
-		return energize(s, Utils.lowestEnergy(enemyTargets), -2);
+		const killable = enemyTargets.filter((t) => t.energy < s.size * 2);
+		if (s.size > 5) {
+			// Note that merged circles will prioritize highest energy enemies instead
+			const selectFrom = killable.length ? killable : enemyTargets;
+			return energize(s, Utils.highestEnergy(selectFrom), -2);
+		} else return energize(s, Utils.lowestEnergy(enemyTargets), -2);
 	}
 
 	// Attack just enough to guarantee enemy base's energy goes below 0 on next tick
@@ -44,7 +49,7 @@ export function useEnergize(s: Spirit): void {
 			const nearEmpower = outpost.energy > 450 && outpost.energy < 550;
 			const shouldEnergize =
 				(memory.centerStar.energy > outpost.energy || nearEmpower) &&
-				Turn.rallyStar === memory.centerStar;
+				Utils.inRange(s, memory.centerStar);
 			const readyToEnergize = memory.strategy !== "all-in" && energyRatio >= 0.5;
 
 			// Energize outpost if attacking through center and conditions met
