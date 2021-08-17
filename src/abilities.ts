@@ -7,7 +7,7 @@ export function useMerge(s: CircleSpirit) {
 		enemy_base.shape === "triangles" &&
 		(Utils.dist(s, Turn.rallyPosition) < 50 || memory.strategy === "all-in");
 
-	if (shouldMerge) {
+	if (!shouldMerge) {
 		if (s.size > 1) s.divide();
 		return;
 	}
