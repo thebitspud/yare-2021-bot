@@ -27,7 +27,7 @@ export const enemyUnits = Object.values(spirits).filter(
 
 export const sqrEnemy = enemy_base.shape === "squares";
 export const triEnemy = enemy_base.shape === "triangles";
-export const enemyShapePower = sqrEnemy ? 0.6 : triEnemy ? 0.85 : 1;
+export const enemyShapePower = sqrEnemy ? 0.7 : triEnemy ? 0.85 : 1;
 
 /**
  * NOTE: there is no overlap between <near>, <mid>, and <far>
@@ -120,18 +120,22 @@ export const rallyPosition = allyOutpost
 if (memory.strategy === "rally") {
 	let groupedSupply = 0;
 	for (const s of myUnits) {
-		if (Utils.dist(s, rallyPosition) <= 100) {
+		if (Utils.dist(s, rallyPosition) <= 20) {
 			groupedSupply += s.size;
 		}
 	}
 
 	if (!memory.allCenter) {
-		const centerHasEnergy = memory.centerStar.energy * 0.8 > myCapacity - myEnergy;
+		const centerHasEnergy = memory.centerStar.energy * 0.75 > myCapacity - myEnergy;
 		memory.allCenter = canHarvestCenter && centerHasEnergy;
 	}
 
+	const groupReq =
+		groupedSupply >= (mySupply - idealDefenders) * memory.settings.attackGroupSize;
+	const starReq = myEnergy / myCapacity >= 0.9 || rallyStar.energy < mySupply / 2;
+
 	// Waiting until enough units have arrived before all-inning
-	if (groupedSupply >= (mySupply - idealDefenders) * memory.settings.attackGroupSize) {
+	if (groupReq && starReq) {
 		memory.strategy = "all-in";
 	}
 }

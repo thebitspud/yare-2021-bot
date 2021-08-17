@@ -128,10 +128,13 @@ export function findMove(s: Spirit): void {
 				}
 			} else {
 				const outpostLow = outpost.energy < Math.max(25, Turn.outpostEnemyPower);
+				const canFuelOutpost =
+					outpostLow && energyRatio > 0.5 && !Utils.inRange(s, outpost);
+				const contestOutpost = Roles.register.scout[0] !== s || outpost.energy === 0;
 				if (Turn.outpostEnemyPower > scoutPower) {
 					// If need outpost to fight, retreat to center
 					return s.move(loci.centerToOutpost);
-				} else if (outpostLow && energyRatio > 0.5 && !Utils.inRange(s, outpost)) {
+				} else if (canFuelOutpost && contestOutpost) {
 					// If outpost is low, move towards it to energize
 					return s.move(Utils.nextPosition(outpost, s));
 				} else {

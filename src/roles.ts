@@ -50,9 +50,12 @@ function removeExtras() {
 		}
 
 		// Scouts may attempt to refuel at a higher cutoff
-		if (energyRatio < 0.5 && s.mark === "scout" && Turn.canHarvestCenter) {
-			setRole(s, "refuel");
-			continue;
+		// Except the first one which should always be attempting to block
+		if (s.mark === "scout" && s !== register.scout[0]) {
+			if (energyRatio < 0.5 && memory.centerStar.energy > 0) {
+				setRole(s, "refuel");
+				continue;
+			}
 		}
 
 		if (energyRatio >= 0.9 && s.mark === "refuel") setRole(s, "idle");
@@ -84,10 +87,13 @@ function removeExtras() {
 
 function assignRoles() {
 	// ATTACKERS
-	if (Turn.isAttacking) {
+	// Turn.isAttacking is delayed by 1 turn so I'm using this instead
+	if (["rally", "all-in"].includes(memory.strategy)) {
 		for (const s of Turn.myUnits) {
 			// When attacking, only other valid roles are defend and refuel
-			if (!["defend", "refuel"].includes(s.mark)) setRole(s, "attack");
+			const canBeAttacker =
+				!["defend", "refuel"].includes(s.mark) && register.scout[0] !== s;
+			if (canBeAttacker) setRole(s, "attack");
 		}
 	}
 

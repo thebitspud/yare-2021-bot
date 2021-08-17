@@ -8,9 +8,9 @@ if (memory.init !== BOT_VERSION) {
 		settings: {
 			debug: false,
 			attackSupply: 51,
-			attackGroupSize: 0.7, // in [0, 1]
+			attackGroupSize: 0.67, // in [0, 1]
 			haulRelayRatio: 2.6,
-			maxMergeSize: 16,
+			maxMergeSize: 6,
 		},
 		config: {
 			energizeRange: 200,

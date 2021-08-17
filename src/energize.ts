@@ -5,12 +5,11 @@ import "./roles";
 /** Attempts to select an optimal energize target for the given spirit */
 export function useEnergize(s: Spirit): void {
 	const nearestStar = Utils.nearest(s, Object.values(stars));
+	const canHarvestNearest = Utils.inRange(s, nearestStar) && nearestStar.energy > 0;
 
 	// If no energy, energize self if star nearby
-	if (s.energy === 0) {
-		if (Utils.inRange(s, nearestStar) && nearestStar.energy > 0) {
-			energize(s, s, 2);
-		}
+	if (s.energy <= 0) {
+		if (canHarvestNearest) energize(s, s, 2);
 		return;
 	}
 
@@ -19,12 +18,13 @@ export function useEnergize(s: Spirit): void {
 		.filter((t) => Utils.energyRatio(t) >= 0);
 
 	// Always attack enemies in range, prioritizing the lowest (positive) energy enemies first
+	// Except if can one shot, in which case prioritize the highest energy killable enemy
 	if (enemyTargets.length) {
-		const killable = enemyTargets.filter((t) => t.energy < s.size * 2);
-		if (s.size > 5) {
-			// Note that merged circles will prioritize highest energy enemies instead
-			const selectFrom = killable.length ? killable : enemyTargets;
-			return energize(s, Utils.highestEnergy(selectFrom), -2);
+		const killable = enemyTargets.filter(
+			(t) => t.energy < Math.max(s.size, s.energy) * 2
+		);
+		if (killable.length) {
+			return energize(s, Utils.highestEnergy(killable), -2);
 		} else return energize(s, Utils.lowestEnergy(enemyTargets), -2);
 	}
 
@@ -48,7 +48,7 @@ export function useEnergize(s: Spirit): void {
 			const starHasEnergy = memory.centerStar.energy > Turn.myCapacity - Turn.myEnergy;
 			const nearEmpower = outpost.energy > 450 && outpost.energy < 550;
 			const shouldEnergize =
-				(memory.centerStar.energy > outpost.energy || nearEmpower) &&
+				(memory.centerStar.energy / 2 > outpost.energy || nearEmpower) &&
 				Utils.inRange(s, memory.centerStar);
 			const readyToEnergize = memory.strategy !== "all-in" && energyRatio >= 0.5;
 
@@ -69,13 +69,21 @@ export function useEnergize(s: Spirit): void {
 		.map((id) => spirits[id])
 		.filter((t) => Utils.energyRatio(t) < 1);
 
-	const lowAllies = allyTargets.filter(
+	const workerRoles: MarkState[] = ["haul", "relay"];
+	const combatRoles: MarkState[] = ["scout", "defend", "attack"];
+
+	// Allies that could benefit from an equalizing energy transfer
+	let lowAllies = allyTargets.filter(
 		(t) =>
 			(t.energy + s.size) / t.energy_capacity <= (s.energy - s.size) / s.energy_capacity
 	);
 
-	const workerRoles: MarkState[] = ["haul", "relay"];
-	const combatRoles: MarkState[] = ["scout", "defend", "attack"];
+	if (canHarvestNearest && !workerRoles.includes(s.mark)) {
+		// Combat units at stars can also boost up allies of equal health
+		lowAllies = allyTargets.filter(
+			(t) => !Utils.inRange(t, nearestStar) && Utils.energyRatio(t) <= energyRatio
+		);
+	}
 
 	if (allyTargets.length) {
 		// Energize allies in danger if not against squares
@@ -130,7 +138,7 @@ export function useEnergize(s: Spirit): void {
 	}
 
 	// If no other energize actions available, harvest from star and energize self
-	if (Utils.inRange(s, nearestStar) && energyRatio < 1 && nearestStar.energy > 0) {
+	if (canHarvestNearest && energyRatio < 1) {
 		return energize(s, s, 2);
 	}
 }
