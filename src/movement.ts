@@ -3,25 +3,30 @@ import * as Turn from "./turn";
 import * as Roles from "./roles";
 
 const loci = memory.loci;
+const register = Roles.register;
 
-const invaders = [...Turn.invaders.near, ...Turn.invaders.med];
+// Where defenders should group up at
+let defenderRally = Turn.idlePosition;
+if (Turn.invaders.far.length) {
+	if (Turn.enemyAllIn) {
+		defenderRally = Utils.nextPosition(base, Utils.nearest(base, Turn.invaders.far), 75);
+	} else {
+		defenderRally = Utils.nextPosition(
+			Utils.nearest(base, Turn.invaders.med),
+			Utils.midpoint(Utils.midpoint(...register.defend), base)
+		);
+	}
+}
 
-const defenderRally =
-	invaders.length && Roles.register.defend.length
-		? Utils.nextPosition(
-				Utils.nearest(base, invaders),
-				Utils.midpoint(Utils.midpoint(...Roles.register.defend), base)
-		  )
-		: Turn.idlePosition;
-
+// Where scouts should group up for outpost retakes
 const scoutRally = Utils.nextPosition(
 	outpost,
-	Utils.midpoint(...Roles.register.scout),
-	402
+	Utils.midpoint(...register.scout),
+	outpost.range + 50
 );
 
-const scoutPower = Roles.register.scout
-	.slice(1) // first scout does its own thing
+const scoutPower = register.scout
+	.slice(1) // leave first scout to do its own thing
 	.map((s) => s.energy)
 	.reduce((acc, n) => acc + n, 0);
 
@@ -42,15 +47,25 @@ export function findMove(s: Spirit): void {
 
 	const nearbyEnemies = s.sight.enemies
 		.map((id) => spirits[id])
-		.filter((t) => t.energy > 0 && Utils.dist(t, s) <= 240);
+		.filter((t) => t.energy > 0 && Utils.inRange(s, t, 240));
 
 	const dangerRating =
-		nearbyEnemies.map((t) => t.energy).reduce((acc, n) => acc + n, 0) *
-		Turn.enemyShapePower;
+		nearbyEnemies
+			.map((t) => {
+				let distFactor = 1;
+				if (Utils.inRange(t, base)) distFactor = 0.25;
+				else if (Utils.inRange(t, base, 400)) distFactor = 0.75;
+
+				return t.energy * distFactor;
+			})
+			.reduce((acc, n) => acc + n, 0) * Turn.enemyShapePower;
+
+	const allyDist = Turn.enemyAllIn ? 50 : 20;
 
 	const groupPower = s.sight.friends_beamable
-		.filter((id) => Utils.dist(spirits[id], s) <= 20)
-		.map((id) => spirits[id].energy)
+		.map((id) => spirits[id])
+		.filter((t) => Utils.dist(t, s) <= allyDist)
+		.map((t) => (Turn.sqrEnemy && t.energy > 0 ? t.energy_capacity : t.energy))
 		.reduce((acc, n) => acc + n, s.energy);
 
 	// I am the enemy of my enemy
@@ -99,7 +114,7 @@ export function findMove(s: Spirit): void {
 				// Prepare by filling up on energy at star if possible
 				const bestStar =
 					Utils.inRange(s, memory.centerStar, 500) &&
-					(!Turn.enemyOutpost || outpost.energy < 300)
+					(Turn.canHarvestCenter || outpost.energy < 300)
 						? memory.centerStar
 						: Turn.rallyStar;
 
@@ -113,10 +128,19 @@ export function findMove(s: Spirit): void {
 			return safeMove(s, Utils.nextPosition(s, defenderRally, 21));
 		case "scout":
 			if (Turn.enemyOutpost || outpostDisparity < 0) {
-				if (Roles.register.scout[0] === s || outpostDisparity < 0) {
+				if (register.scout[0] === s || outpostDisparity < 0) {
 					// Attempt to block enemy base production from back if cannot contest center
-					const dist = groupPower > enemyBasePower + enemy_base.energy ? -198 : -398;
-					return safeMove(s, Utils.nextPosition(enemy_base, memory.enemyStar, dist), 602);
+					if (groupPower > enemyBasePower + enemy_base.energy) {
+						// If no defenders or can overpower defenses, attack enemy base
+						return safeMove(s, Utils.nextPosition(enemy_base, s));
+					} else {
+						// Otherwise, attempt to block enemy production from opposite direction of star
+						return safeMove(
+							s,
+							Utils.nextPosition(enemy_base, memory.enemyStar, -398),
+							602
+						);
+					}
 				} else {
 					if (groupPower * 0.7 >= scoutPower) {
 						// Retake the outpost once scouts are grouped and ready
@@ -130,7 +154,7 @@ export function findMove(s: Spirit): void {
 				const outpostLow = outpost.energy < Math.max(25, Turn.outpostEnemyPower);
 				const canFuelOutpost =
 					outpostLow && energyRatio > 0.5 && !Utils.inRange(s, outpost);
-				const contestOutpost = Roles.register.scout[0] !== s || outpost.energy === 0;
+				const contestOutpost = register.scout[0] !== s || outpost.energy === 0;
 				if (Turn.outpostEnemyPower > scoutPower) {
 					// If need outpost to fight, retreat to center
 					return s.move(loci.centerToOutpost);
@@ -141,7 +165,7 @@ export function findMove(s: Spirit): void {
 					// If not threatened, harass enemy base and production
 					if (groupPower > enemyBasePower) {
 						// If no defenders or can overpower defenses, attack enemy base
-						return s.move(Utils.nextPosition(enemy_base, outpost));
+						return s.move(Utils.nextPosition(enemy_base, s));
 					} else {
 						// Otherwise, attempt to block enemy production from within outpost range
 						return s.move(Utils.nextPosition(enemy_base, outpost, 400));
@@ -157,12 +181,14 @@ export function findMove(s: Spirit): void {
 				.filter((t) => Utils.energyRatio(t) < 1 && t.mark === "relay");
 
 			// Move to transfer energy from star to relays
-			if (energyRatio >= 1 || (energyRatio > 0 && relays.length))
+			if ((Utils.inRange(s, base) || tick < 3) && energyRatio > 0.25) {
+				return s.move(loci.baseToStar);
+			} else if (energyRatio >= 1 || (energyRatio > 0 && relays.length)) {
 				return s.move(Utils.nextPosition(loci.baseToStar, memory.myStar));
-			else return s.move(loci.starToBase);
+			} else return s.move(loci.starToBase);
 		case "refuel":
 			let starList = [memory.myStar];
-			if (Turn.canHarvestCenter) starList.push(memory.centerStar);
+			if (Turn.canHarvestCenter || outpost.energy < 350) starList.push(memory.centerStar);
 			if (Utils.inRange(s, memory.enemyStar, 600)) starList.push(memory.enemyStar);
 
 			// Move to refuel and reset at nearest safe star

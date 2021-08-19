@@ -43,8 +43,10 @@ function removeExtras() {
 	// This must be called before the other extra-removing methods
 	for (const s of Turn.myUnits) {
 		const energyRatio = Utils.energyRatio(s);
+		// Size 1 units can be more aggressive vs squares and triangles
+		const retreatThreshold = (Turn.sqrEnemy || Turn.triEnemy) && s.size <= 1 ? 0 : 0.15;
 		// Non-worker units with low energy should always retreat and refuel
-		if (energyRatio < 0.2 && refuelable.includes(s.mark)) {
+		if (energyRatio <= retreatThreshold && refuelable.includes(s.mark)) {
 			setRole(s, "refuel");
 			continue;
 		}
@@ -92,7 +94,8 @@ function assignRoles() {
 		for (const s of Turn.myUnits) {
 			// When attacking, only other valid roles are defend and refuel
 			const canBeAttacker =
-				!["defend", "refuel"].includes(s.mark) && register.scout[0] !== s;
+				!["defend", "refuel"].includes(s.mark) &&
+				(memory.strategy === "all-in" || s !== register.scout[0]);
 			if (canBeAttacker) setRole(s, "attack");
 		}
 	}
@@ -108,7 +111,7 @@ function assignRoles() {
 
 		// If no idle units, try to fill with valid workers
 		const validWorkers = [...register.relay, ...register.haul].filter(
-			(s) => Utils.energyRatio(s) > 0.5
+			(s) => Utils.energyRatio(s) > 0.75
 		);
 		if (validWorkers.length) {
 			setRole(Utils.nearest(base, validWorkers), "defend");
@@ -119,12 +122,34 @@ function assignRoles() {
 		const validAttackers = [...register.attack, ...register.scout].filter(
 			(s) =>
 				Utils.energyRatio(s) === 1 &&
-				Utils.dist(s, base) < 800 &&
+				Utils.inRange(base, s, 800) &&
 				s.size === memory.mySize
 		);
 		if (validAttackers.length) {
 			setRole(Utils.nearest(base, validAttackers), "defend");
 		} else break; // If cannot fill, break to prevent infinite loop
+	}
+
+	// Case handler for preparing to defend when being all-inned
+	if (Turn.enemyAllIn) {
+		const mustDefend =
+			Turn.enemyUnits.filter((e) => Utils.inRange(e, base, 800)).length >=
+			Turn.enemyUnits.length / 2;
+		const mustGroup =
+			Turn.enemyUnits.filter((e) => Utils.inRange(e, base, 700)).length >=
+			Turn.enemyUnits.length / 2;
+
+		if (mustDefend) {
+			for (const s of Turn.myUnits) {
+				if (!["defend", "refuel"].includes(s.mark)) {
+					setRole(s, Utils.energyRatio(s) <= 0.5 ? "refuel" : "defend");
+				}
+
+				if (mustGroup && s.mark === "refuel" && Utils.energyRatio(s) > 0.5) {
+					setRole(s, "defend");
+				}
+			}
+		}
 	}
 
 	// If attacking, return because we do not need other roles

@@ -11,7 +11,7 @@ if (memory.init !== BOT_VERSION) {
 			attackSupply: 51,
 			attackGroupSize: 0.67, // in [0, 1]
 			haulRelayRatio: 2.6,
-			maxMergeSize: 6,
+			maxMergeSize: 8,
 		},
 		config: {
 			energizeRange: 200,

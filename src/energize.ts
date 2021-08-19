@@ -2,6 +2,10 @@ import * as Utils from "./utils";
 import * as Turn from "./turn";
 import "./roles";
 
+const canDefend =
+	Turn.mySupply + 1 >= Turn.enemyScouts.length * memory.enemySize * Turn.enemyShapePower;
+const enemyArriving = Turn.invaders.far.length >= Turn.enemyUnits.length / 2;
+
 /** Attempts to select an optimal energize target for the given spirit */
 export function useEnergize(s: Spirit): void {
 	const nearestStar = Utils.nearest(s, Object.values(stars));
@@ -17,15 +21,13 @@ export function useEnergize(s: Spirit): void {
 		.map((id) => spirits[id])
 		.filter((t) => Utils.energyRatio(t) >= 0);
 
-	// Always attack enemies in range, prioritizing the lowest (positive) energy enemies first
-	// Except if can one shot, in which case prioritize the highest energy killable enemy
+	// Always attack enemies in range, using an algorithm optimized to maximize kill count
 	if (enemyTargets.length) {
 		const killable = enemyTargets.filter(
-			(t) => t.energy < Math.max(s.size, s.energy) * 2
+			(t) => t.energy < Math.min(s.size, s.energy) * 2
 		);
-		if (killable.length) {
-			return energize(s, Utils.highestEnergy(killable), -2);
-		} else return energize(s, Utils.lowestEnergy(enemyTargets), -2);
+		if (killable.length) return energize(s, Utils.highestEnergy(killable), -2);
+		else return energize(s, Utils.lowestEnergy(enemyTargets), -2);
 	}
 
 	// Attack just enough to guarantee enemy base's energy goes below 0 on next tick
@@ -35,8 +37,9 @@ export function useEnergize(s: Spirit): void {
 		}
 	}
 
+	const baseCannotTank = base.energy - Turn.invaders.supply * 2 <= 0;
 	// Energize base if threatened by invaders
-	if (Utils.inRange(s, base) && base.energy - Turn.invaders.supply * 2 <= 0) {
+	if (Utils.inRange(s, base) && baseCannotTank && !Turn.enemyAllIn) {
 		return energize(s, base, 1);
 	}
 
@@ -50,7 +53,7 @@ export function useEnergize(s: Spirit): void {
 			const shouldEnergize =
 				(memory.centerStar.energy / 2 > outpost.energy || nearEmpower) &&
 				Utils.inRange(s, memory.centerStar);
-			const readyToEnergize = memory.strategy !== "all-in" && energyRatio >= 0.5;
+			const readyToEnergize = memory.strategy !== "all-in" && energyRatio > 0.5;
 
 			// Energize outpost if attacking through center and conditions met
 			if (starHasEnergy && shouldEnergize && readyToEnergize) {
@@ -59,7 +62,7 @@ export function useEnergize(s: Spirit): void {
 		} else {
 			// Energize outpost if low or controlled by enemy
 			const outpostLow = outpost.energy < Math.max(25, Turn.outpostEnemyPower);
-			if (Turn.enemyOutpost || (outpostLow && energyRatio >= 0.5)) {
+			if (Turn.enemyOutpost || (outpostLow && energyRatio > 0.5)) {
 				return energize(s, outpost, Turn.enemyOutpost ? -2 : 1);
 			}
 		}
@@ -73,13 +76,14 @@ export function useEnergize(s: Spirit): void {
 	const combatRoles: MarkState[] = ["scout", "defend", "attack"];
 
 	// Allies that could benefit from an equalizing energy transfer
-	let lowAllies = allyTargets.filter(
-		(t) =>
-			(t.energy + s.size) / t.energy_capacity <= (s.energy - s.size) / s.energy_capacity
-	);
+	let lowAllies = allyTargets.filter((t) => {
+		const transferEnergy = (s.energy - s.size) / s.energy_capacity;
+		const allyTransferEnergy = (t.energy + s.size) / t.energy_capacity;
+		return allyTransferEnergy <= transferEnergy;
+	});
 
 	if (canHarvestNearest && !workerRoles.includes(s.mark)) {
-		// Combat units at stars can also boost up allies of equal health
+		// Non-worker units at stars can also boost up allies of equal health
 		lowAllies = allyTargets.filter(
 			(t) => !Utils.inRange(t, nearestStar) && Utils.energyRatio(t) <= energyRatio
 		);
@@ -87,7 +91,7 @@ export function useEnergize(s: Spirit): void {
 
 	if (allyTargets.length) {
 		// Energize allies in danger if not against squares
-		// Squares one-shot and overkill, so defensive energizing is a waste of energy
+		// Squares one-shot and overkill, so preemptive defensive energizing is a waste
 		if (!Turn.sqrEnemy) {
 			const inDanger = allyTargets.filter((t) => t.sight.enemies_beamable.length);
 			if (inDanger.length) return energize(s, Utils.lowestEnergy(inDanger), 1);
@@ -96,7 +100,7 @@ export function useEnergize(s: Spirit): void {
 		// Energize allies of higher priority
 		// In general, priority goes as follows:
 		// combat units > idle/refueling units > worker units
-		if (!combatRoles.includes(s.mark)) {
+		if (!combatRoles.includes(s.mark) && !Turn.enemyAllIn) {
 			const combatAllies = allyTargets.filter((t) => combatRoles.includes(t.mark));
 
 			if (combatAllies.length) {
@@ -106,11 +110,20 @@ export function useEnergize(s: Spirit): void {
 				if (nonWorkers.length) return energize(s, Utils.lowestEnergy(nonWorkers), 1);
 			}
 		}
+	}
 
+	// If no higher priority actions and is worker unit in range, energize base
+	if (Utils.inRange(s, base) && workerRoles.includes(s.mark)) {
+		const atSpawnCutoff = base.energy >= base.current_spirit_cost || base.energy === 0;
+		const stopSpawning = Turn.enemyAllIn && atSpawnCutoff && canDefend && enemyArriving;
+		// Stop energizing after a spawn cutoff if forced to defend
+		if (!stopSpawning) return energize(s, base, 1);
+	}
+
+	if (allyTargets.length) {
 		// Haulers should energize relays when possible
 		if (s.mark === "haul") {
 			const relays = allyTargets.filter((t) => t.mark === "relay");
-
 			if (relays.length) return energize(s, Utils.lowestEnergy(relays), 1);
 		}
 
@@ -125,16 +138,6 @@ export function useEnergize(s: Spirit): void {
 				if (nonWorkers.length) return energize(s, Utils.lowestEnergy(nonWorkers), 1);
 			}
 		}
-	}
-
-	// If no higher priority actions and is worker unit in range, energize base
-	if (Utils.inRange(s, base) && workerRoles.includes(s.mark)) return energize(s, base, 1);
-
-	// Handling edge case for haulers waiting for relays
-	const relayInRange = !!allyTargets.filter((t) => t.mark === "relay").length;
-	const noAvailableRelays = !lowAllies.filter((t) => t.mark === "relay").length;
-	if (relayInRange && noAvailableRelays) {
-		if (lowAllies.length) return energize(s, Utils.lowestEnergy(lowAllies), 1);
 	}
 
 	// If no other energize actions available, harvest from star and energize self

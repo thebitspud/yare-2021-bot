@@ -1,6 +1,6 @@
 {
   "name": "cerebrate-ai",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "description": "A typescript yare.io circle ai designed and implemented by thebitspud, based off the template by swz.",
   "main": "dist/bundle.js",
   "scripts": {
