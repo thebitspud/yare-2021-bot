@@ -109,8 +109,10 @@ export const enemyScouts = enemyUnits.filter((e) => {
 export const enemyAllIn = enemyScouts.length > 0.75 * enemyUnits.length;
 
 export const isAttacking = ["rally", "all-in"].includes(memory.strategy);
-export const refuelAtCenter = memory.centerStar.active_in < 25 && !enemyOutpost;
+export const refuelAtCenter =
+	memory.centerStar.active_in < 25 && (!enemyOutpost || outpost.energy < 300);
 
+export const maxWorkers = getMaxWorkers();
 export let idealDefenders = Math.ceil(invaders.threat / (memory.mySize * 10));
 if (isAttacking) idealDefenders += vsSquares ? 5 : 3;
 idealDefenders = Math.min(idealDefenders, Math.floor(enemySupply * enemyShapePower));
@@ -118,29 +120,10 @@ idealDefenders = Math.min(idealDefenders, Math.floor(enemySupply * enemyShapePow
 // Any lower and you either have idle units or an over-harvesting problem
 // Any higher and you hit the 51 supply threshold late
 export let idealScouts = 0;
-if (!vsSquares || (tick >= 50 && !enemyAllIn)) idealScouts = 1 + myUnits.length / 8;
-if (vsSquares && memory.myStar.energy < 250 && tick >= 75) idealScouts *= 1.25;
-idealScouts = Math.ceil(idealScouts);
-export const maxWorkers = getMaxWorkers();
-
-// Maintaining an optimal number of workers at all times
-function getMaxWorkers(): number {
-	// If being all-inned, harvest as much as possible before defending
-	if (enemyAllIn) return memory.settings.attackSupply;
-
-	// If very close to being able to attack, worker limit is removed
-	let supplyRatio = mySupply / memory.settings.attackSupply;
-	if (supplyRatio >= 0.75) return memory.settings.attackSupply;
-
-	// Can over-harvest if star is near energy cap
-	// Or after hitting certain supply thresholds
-	let energyRegenCap = Utils.energyPerTick(memory.myStar);
-	if (memory.myStar.energy > 975) energyRegenCap++;
-	if (supplyRatio >= 0.6) energyRegenCap++;
-
-	// Calculate ideal worker count
-	const workerEfficiency = 1 / (memory.settings.haulRelayRatio + 1);
-	return Math.floor(energyRegenCap / workerEfficiency);
+if (!vsSquares || (tick >= 50 && !enemyAllIn)) {
+	idealScouts = Math.ceil(
+		Math.max(1 + myUnits.length / 8, (myUnits.length - maxWorkers - idealDefenders) / 2)
+	);
 }
 
 const canBeatAll = myCapacity > enemy_base.energy + enemyCapacity * enemyShapePower * 2.5;
@@ -161,13 +144,14 @@ export const rallyPosition = allyOutpost
 if (memory.strategy === "rally") {
 	let groupedSupply = 0;
 	for (const s of myUnits) {
-		if (Utils.inRange(s, rallyPosition, 20)) {
+		if (Utils.inRange(s, rallyPosition, 40)) {
 			groupedSupply += s.size;
 		}
 	}
 
 	if (!memory.allCenter) {
-		const centerHasEnergy = memory.centerStar.energy * 0.5 > myCapacity - myEnergy;
+		const centerHasEnergy =
+			memory.centerStar.energy > (myCapacity - myEnergy) * (allyOutpost ? 0.5 : 1);
 		memory.allCenter = refuelAtCenter && centerHasEnergy;
 	}
 
@@ -188,6 +172,26 @@ const shouldRetreat = mySupply < memory.settings.attackSupply / 2 && powerRatio 
 if (memory.strategy === "all-in" && shouldRetreat) {
 	memory.strategy = "economic";
 	memory.allCenter = false;
+}
+
+// Maintaining an optimal number of workers at all times
+function getMaxWorkers(): number {
+	// If being all-inned, harvest as much as possible before defending
+	if (enemyAllIn) return memory.settings.attackSupply;
+
+	// If very close to being able to attack, worker limit is removed
+	let supplyRatio = mySupply / memory.settings.attackSupply;
+	if (supplyRatio >= 0.75) return memory.settings.attackSupply;
+
+	// Can over-harvest if star is near energy cap
+	// Or after hitting certain supply thresholds
+	let energyRegenCap = Utils.energyPerTick(memory.myStar);
+	if (memory.myStar.energy > 975) energyRegenCap++;
+	if (supplyRatio >= 0.5) energyRegenCap++;
+
+	// Calculate ideal worker count
+	const workerEfficiency = 1 / (memory.settings.haulRelayRatio + 1);
+	return Math.floor(energyRegenCap / workerEfficiency);
 }
 
 /** Logs turn data once per tick */

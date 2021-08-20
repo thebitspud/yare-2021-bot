@@ -9,7 +9,7 @@ const enemiesArriving =
 	Turn.enemyUnits.length / 2;
 const enemyBasePower = Turn.myUnits
 	.filter((s) => Utils.inRange(s, enemy_base, 300))
-	.map((s) => s.energy * 2)
+	.map((s) => Math.min(s.size, s.energy) * 2)
 	.reduce((acc, n) => acc + n, 0);
 const canWinGame =
 	enemyBasePower >= enemy_base.energy + Turn.enemyBaseDefense * enemy_base.hp;
@@ -28,19 +28,21 @@ export function useEnergize(s: Spirit): void {
 
 	// If no energy, energize self if star nearby
 	if (s.energy <= 0) {
-		if (canHarvestNearest) energize(s, s, 2);
+		if (canHarvestNearest) energize(s, nearestStar);
 		return;
 	}
 
-	let enemyTargets = s.sight.enemies_beamable
+	const enemyTargets = s.sight.enemies_beamable
 		.map((id) => spirits[id])
 		.filter((t) => Utils.energyRatio(t) >= 0);
 
+	const energizePower = Math.min(s.size, s.energy);
+
 	// Always attack enemies in range, using an algorithm optimized to maximize kill count
 	if (enemyTargets.length) {
-		let killable = enemyTargets.filter((t) => t.energy < Math.min(s.size, s.energy) * 2);
-		if (killable.length) return energize(s, Utils.highestEnergy(killable), -2);
-		else return energize(s, Utils.lowestEnergy(enemyTargets), -2);
+		const killable = enemyTargets.filter((t) => t.energy < energizePower * 2);
+		if (killable.length) return energize(s, Utils.highestEnergy(killable));
+		else return energize(s, Utils.lowestEnergy(enemyTargets));
 	}
 
 	// Attack just enough to guarantee enemy base's energy goes below 0 on next tick
@@ -48,14 +50,14 @@ export function useEnergize(s: Spirit): void {
 		const canEnergize = (Turn.refuelAtCenter && s !== Turn.nearestScout) || canWinGame;
 		const notOverkill = enemy_base.energy + Turn.enemyBaseDefense >= 0;
 
-		if (canEnergize && notOverkill) return energize(s, enemy_base, -2);
+		if (canEnergize && notOverkill) return energize(s, enemy_base);
 	}
 
 	// Energize base if threatened by invaders
 	if (Utils.inRange(s, base)) {
 		const baseCannotTank = base.energy - Turn.invaders.supply * 2 <= 0;
 		if (baseCannotTank && !Turn.enemyAllIn) {
-			return energize(s, base, 1);
+			return energize(s, base);
 		}
 	}
 
@@ -73,13 +75,13 @@ export function useEnergize(s: Spirit): void {
 
 			// Energize outpost if attacking through center and conditions met
 			if (starHasEnergy && shouldEnergize && readyToEnergize) {
-				return energize(s, outpost, Turn.enemyOutpost ? -2 : 1);
+				return energize(s, outpost);
 			}
 		} else {
 			// Energize outpost if low or controlled by enemy
 			const outpostLow = outpost.energy < Math.max(25, Turn.outpostEnemyPower);
 			if (Turn.enemyOutpost || (outpostLow && energyRatio > 0.5)) {
-				return energize(s, outpost, Turn.enemyOutpost ? -2 : 1);
+				return energize(s, outpost);
 			}
 		}
 	}
@@ -89,12 +91,13 @@ export function useEnergize(s: Spirit): void {
 		.filter((t) => Utils.energyRatio(t) < 1);
 
 	const workerRoles: MarkState[] = ["haul", "relay"];
-	const combatRoles: MarkState[] = ["scout", "defend", "attack"];
+	let combatRoles: MarkState[] = ["scout", "defend", "attack"];
+	if (Turn.enemyAllIn || memory.strategy === "rally") combatRoles.push("refuel");
 
 	// Allies that could benefit from an equalizing energy transfer
 	let lowAllies = allyTargets.filter((t) => {
-		const transferEnergy = (s.energy - s.size) / s.energy_capacity;
-		const allyTransferEnergy = (t.energy + s.size) / t.energy_capacity;
+		const transferEnergy = (s.energy - energizePower) / s.energy_capacity;
+		const allyTransferEnergy = (t.energy + energizePower) / t.energy_capacity;
 		return allyTransferEnergy <= transferEnergy;
 	});
 
@@ -110,7 +113,7 @@ export function useEnergize(s: Spirit): void {
 		// Squares one-shot and overkill, so preemptive defensive energizing is a waste
 		if (!Turn.vsSquares) {
 			const inDanger = allyTargets.filter((t) => t.sight.enemies_beamable.length);
-			if (inDanger.length) return energize(s, Utils.lowestEnergy(inDanger), 1);
+			if (inDanger.length) return energize(s, Utils.lowestEnergy(inDanger));
 		}
 
 		// Energize allies of higher priority
@@ -120,10 +123,10 @@ export function useEnergize(s: Spirit): void {
 			const combatAllies = allyTargets.filter((t) => combatRoles.includes(t.mark));
 
 			if (combatAllies.length) {
-				return energize(s, Utils.lowestEnergy(combatAllies), 1);
+				return energize(s, Utils.lowestEnergy(combatAllies));
 			} else if (workerRoles.includes(s.mark)) {
 				const nonWorkers = allyTargets.filter((t) => !workerRoles.includes(t.mark));
-				if (nonWorkers.length) return energize(s, Utils.lowestEnergy(nonWorkers), 1);
+				if (nonWorkers.length) return energize(s, Utils.lowestEnergy(nonWorkers));
 			}
 		}
 	}
@@ -133,40 +136,58 @@ export function useEnergize(s: Spirit): void {
 		const atSpawnCutoff = base.energy >= base.current_spirit_cost || base.energy === 0;
 		const stopSpawning = Turn.enemyAllIn && atSpawnCutoff && canDefend && enemiesArriving;
 		// Stop energizing after a spawn cutoff if forced to defend
-		if (!stopSpawning) return energize(s, base, 1);
+		if (!stopSpawning) return energize(s, base);
 	}
 
 	if (allyTargets.length) {
 		// Haulers should energize relays when possible
 		if (s.mark === "haul") {
 			const relays = allyTargets.filter((t) => t.mark === "relay");
-			if (relays.length) return energize(s, Utils.lowestEnergy(relays), 1);
+			if (relays.length) return energize(s, Utils.lowestEnergy(relays));
 		}
 
 		// Energize allies of similar priority with lower energy
 		if (lowAllies.length) {
 			if (combatRoles.includes(s.mark)) {
 				const combatAllies = lowAllies.filter((t) => combatRoles.includes(t.mark));
-				if (combatAllies.length) return energize(s, Utils.lowestEnergy(combatAllies), 1);
+				if (combatAllies.length) return energize(s, Utils.lowestEnergy(combatAllies));
 			} else if (!workerRoles.includes(s.mark)) {
 				const nonWorkers = lowAllies.filter((t) => !workerRoles.includes(t.mark));
-				if (nonWorkers.length) return energize(s, Utils.lowestEnergy(nonWorkers), 1);
+				if (nonWorkers.length) return energize(s, Utils.lowestEnergy(nonWorkers));
 			}
 		}
 	}
 
 	// If no other energize actions available, harvest from star and energize self
 	if (canHarvestNearest && energyRatio < 1) {
-		return energize(s, s, 2);
+		return energize(s, nearestStar);
 	}
 }
 
-/** Energizes the selected target and updates energy values accordingly
- * <br>adjustFactor: 2 for self, 1 for ally unit/structure, -2 for enemy unit/structure
- */
-// TODO: automate adjustFactor
-function energize(s: Spirit, target: Entity, adjustFactor: number) {
+/** Energizes the selected target and updates energy values accordingly */
+function energize(s: Spirit, target: Entity) {
+	let energizePower = Math.min(s.size, s.energy);
+	let transferRatio = 1;
+
+	if ("player_id" in target) {
+		// Setting {transferRatio} for units/bases according to allegiance
+		transferRatio = (<Destructible>target).player_id === this_player_id ? 1 : -2;
+	} else if ("structure_type" in target) {
+		switch ((<Structure>target).structure_type) {
+			case "outpost":
+				// A neutral outpost is given the same {transferRatio} as a friendly one
+				transferRatio = [this_player_id, ""].includes((<Outpost>target).control) ? 1 : -2;
+				break;
+			case "star":
+				// {energizePower} works differently when attempting to refuel from a star
+				target.energy -= Math.min(s.size, s.energy_capacity - s.energy);
+				s.energy += s.size;
+				s.energize(s);
+				return;
+		}
+	}
+
 	s.energize(target);
-	s.energy -= s.size;
-	target.energy += s.size * adjustFactor;
+	s.energy -= energizePower;
+	target.energy += energizePower * transferRatio;
 }

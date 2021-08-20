@@ -101,7 +101,8 @@ function assignRoles() {
 		for (const s of Turn.myUnits) {
 			// When attacking, only other valid roles are defend and refuel
 			const canBeAttacker =
-				!["defend", "refuel"].includes(s.mark) && s !== Turn.nearestScout;
+				!["defend", "refuel"].includes(s.mark) &&
+				(s !== Turn.nearestScout || memory.strategy === "all-in");
 			if (canBeAttacker) setRole(s, "attack");
 		}
 	}

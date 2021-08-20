@@ -7,11 +7,11 @@ if (memory.init !== BOT_VERSION) {
 	memory = {
 		init: BOT_VERSION,
 		settings: {
-			debug: false,
+			debug: true,
 			attackSupply: 51,
 			attackGroupSize: 0.7, // in [0, 1]
 			haulRelayRatio: 2.6,
-			maxMergeSize: 4,
+			maxMergeSize: 4, // 1 to never merge
 		},
 		config: {
 			energizeRange: 200,
@@ -35,7 +35,7 @@ if (memory.init !== BOT_VERSION) {
 		baseToCenter: Utils.nextPosition(base, memory.centerStar),
 		starToBase: Utils.nextPosition(memory.myStar, base),
 		centerToBase: Utils.nextPosition(memory.centerStar, base),
-		centerToOutpost: Utils.midpoint(memory.centerStar, outpost),
+		centerToOutpost: Utils.nextPosition(memory.centerStar, outpost),
 		outpostAntipode: Utils.nextPosition(memory.centerStar, outpost, -198),
 	};
 }

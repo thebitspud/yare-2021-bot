@@ -81,32 +81,33 @@ export function findMove(s: Spirit): void {
 		.map((id) => spirits[id])
 		.filter((t) => t.sight.enemies_beamable.length >= 4);
 
-	// If cannot win fight or versus explosive units, move away from threats
 	if (Turn.vsTriangles && explodeThreats.length) {
-		// Computing an optimal escape vector
+		// Always kite out of explode range vs triangles
 		const escapeVec = Utils.midpoint(
 			...explodeThreats.map((t) => Utils.normalize(Utils.vectorTo(t, s)))
 		);
 
 		if (debug) s.shout("avoid");
 		return s.move(Utils.add(s, Utils.normalize(escapeVec, 21)));
-	} else if (groupPower < dangerRating) {
-		// Computing escape vector that takes into account available enemy energy
-		const enemyPowerVec = Utils.midpoint(
-			...nearbyEnemies.map((t) => Utils.normalize(Utils.vectorTo(t, s), t.energy))
-		);
+	} else if (dangerRating) {
+		// Flee if enemies are stronger; chase if allies are stronger
+		if (groupPower <= dangerRating) {
+			const enemyPowerVec = Utils.midpoint(
+				...nearbyEnemies.map((t) => Utils.normalize(Utils.vectorTo(t, s), t.energy))
+			);
 
-		if (debug) s.shout("avoid");
-		return s.move(Utils.add(s, Utils.normalize(enemyPowerVec, 21)));
-	} else if (dangerRating && energyRatio >= 0.2) {
-		const enemyTargets = s.sight.enemies_beamable
-			.map((t) => spirits[t])
-			.filter((t) => Utils.energyRatio(t) >= 0);
+			if (debug) s.shout("avoid");
+			return s.move(Utils.add(s, Utils.normalize(enemyPowerVec, 21)));
+		} else if (energyRatio >= 0.25) {
+			const enemyTargets = s.sight.enemies_beamable
+				.map((t) => spirits[t])
+				.filter((t) => Utils.energyRatio(t) >= 0);
 
-		// Attack and chase vulnerable enemy units in range if stronger
-		if (debug) s.shout("chase");
-		if (enemyTargets.length)
-			return safeMove(s, Utils.lowestEnergy(enemyTargets).position);
+			// Attack and chase vulnerable enemy units in range if stronger
+			if (debug) s.shout("chase");
+			if (enemyTargets.length)
+				return safeMove(s, Utils.lowestEnergy(enemyTargets).position);
+		}
 	}
 
 	// Role specific movement commands
@@ -118,8 +119,7 @@ export function findMove(s: Spirit): void {
 			} else if (energyRatio < 1 && Turn.rallyStar.energy > 0) {
 				// Prepare by filling up on energy at star if possible
 				const bestStar =
-					Utils.inRange(s, memory.centerStar, 500) &&
-					(Turn.refuelAtCenter || outpost.energy < 300)
+					Utils.inRange(s, memory.centerStar, 500) && Turn.refuelAtCenter
 						? memory.centerStar
 						: Turn.rallyStar;
 
@@ -189,12 +189,17 @@ export function findMove(s: Spirit): void {
 				return s.move(Utils.nextPosition(loci.baseToStar, memory.myStar));
 			} else return s.move(loci.starToBase);
 		case "refuel":
-			let starList = [memory.myStar];
-			if (Turn.refuelAtCenter || outpost.energy < 350) starList.push(memory.centerStar);
+			let starList: Star[] = [Turn.rallyStar];
+			if (Turn.refuelAtCenter) starList.push(memory.centerStar);
 			if (Utils.inRange(s, memory.enemyStar, 600)) starList.push(memory.enemyStar);
+			const nearestStar = Utils.nearest(s, starList);
+			const moveTo = Utils.nextPosition(
+				nearestStar,
+				Utils.inRange(s, nearestStar) ? Turn.rallyPosition : s
+			);
 
 			// Move to refuel and reset at nearest safe star
-			return safeMove(s, Utils.nextPosition(Utils.nearest(s, starList), s));
+			return safeMove(s, moveTo);
 		case "idle":
 		default:
 			if (Turn.refuelAtCenter) {
