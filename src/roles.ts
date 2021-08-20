@@ -44,7 +44,8 @@ function removeExtras() {
 	for (const s of Turn.myUnits) {
 		const energyRatio = Utils.energyRatio(s);
 		// Size 1 units can be more aggressive vs squares and triangles
-		const retreatThreshold = (Turn.sqrEnemy || Turn.triEnemy) && s.size <= 1 ? 0 : 0.15;
+		const retreatThreshold =
+			(Turn.vsSquares || Turn.vsTriangles) && s.size <= 1 ? 0 : 0.15;
 		// Non-worker units with low energy should always retreat and refuel
 		if (energyRatio <= retreatThreshold && refuelable.includes(s.mark)) {
 			setRole(s, "refuel");
@@ -53,11 +54,17 @@ function removeExtras() {
 
 		// Scouts may attempt to refuel at a higher cutoff
 		// Except the first one which should always be attempting to block
-		if (s.mark === "scout" && s !== register.scout[0]) {
+		if (s.mark === "scout" && s !== Turn.nearestScout) {
 			if (energyRatio < 0.5 && memory.centerStar.energy > 0) {
 				setRole(s, "refuel");
 				continue;
 			}
+		}
+
+		// Defenders can refuel if there are no potential invaders
+		if (s.mark === "defend" && energyRatio < 1 && !Turn.invaders.far.length) {
+			setRole(s, "refuel");
+			continue;
 		}
 
 		if (energyRatio >= 0.9 && s.mark === "refuel") setRole(s, "idle");
@@ -90,12 +97,11 @@ function removeExtras() {
 function assignRoles() {
 	// ATTACKERS
 	// Turn.isAttacking is delayed by 1 turn so I'm using this instead
-	if (["rally", "all-in"].includes(memory.strategy)) {
+	if (Turn.isAttacking) {
 		for (const s of Turn.myUnits) {
 			// When attacking, only other valid roles are defend and refuel
 			const canBeAttacker =
-				!["defend", "refuel"].includes(s.mark) &&
-				(memory.strategy === "all-in" || s !== register.scout[0]);
+				!["defend", "refuel"].includes(s.mark) && s !== Turn.nearestScout;
 			if (canBeAttacker) setRole(s, "attack");
 		}
 	}
@@ -105,38 +111,38 @@ function assignRoles() {
 		// Try to fill with idle units first
 		const validIdle = register.idle.filter((s) => Utils.energyRatio(s) >= 0.5);
 		if (validIdle.length) {
-			setRole(Utils.nearest(base, validIdle), "defend");
+			setRole(Utils.nearest(Turn.nearestEnemy, validIdle), "defend");
 			continue;
 		}
 
 		// If no idle units, try to fill with valid workers
 		const validWorkers = [...register.relay, ...register.haul].filter(
-			(s) => Utils.energyRatio(s) > 0.75
+			(s) => Utils.energyRatio(s) > 0.5
 		);
 		if (validWorkers.length) {
-			setRole(Utils.nearest(base, validWorkers), "defend");
+			setRole(Utils.nearest(Turn.nearestEnemy, validWorkers), "defend");
 			continue;
 		}
 
 		// Otherwise, can fill with attackers/scouts if necessary
 		const validAttackers = [...register.attack, ...register.scout].filter(
 			(s) =>
-				Utils.energyRatio(s) === 1 &&
+				Utils.energyRatio(s) >= 0.8 &&
 				Utils.inRange(base, s, 800) &&
 				s.size === memory.mySize
 		);
 		if (validAttackers.length) {
-			setRole(Utils.nearest(base, validAttackers), "defend");
+			setRole(Utils.nearest(Turn.nearestEnemy, validAttackers), "defend");
 		} else break; // If cannot fill, break to prevent infinite loop
 	}
 
 	// Case handler for preparing to defend when being all-inned
 	if (Turn.enemyAllIn) {
-		const mustDefend =
-			Turn.enemyUnits.filter((e) => Utils.inRange(e, base, 800)).length >=
-			Turn.enemyUnits.length / 2;
+		const mustDefend = Turn.invaders.far.length >= Turn.enemyUnits.length / 2;
 		const mustGroup =
-			Turn.enemyUnits.filter((e) => Utils.inRange(e, base, 700)).length >=
+			Turn.enemyUnits.filter(
+				(e) => Utils.inRange(e, base, 750) || Utils.inRange(e, memory.myStar, 650)
+			).length >=
 			Turn.enemyUnits.length / 2;
 
 		if (mustDefend) {
@@ -145,7 +151,7 @@ function assignRoles() {
 					setRole(s, Utils.energyRatio(s) <= 0.5 ? "refuel" : "defend");
 				}
 
-				if (mustGroup && s.mark === "refuel" && Utils.energyRatio(s) > 0.5) {
+				if (mustGroup && s.mark === "refuel" && Utils.energyRatio(s) >= 0.5) {
 					setRole(s, "defend");
 				}
 			}
@@ -165,7 +171,8 @@ function assignRoles() {
 
 	// WORKERS
 	while (register.relay.length + register.haul.length < Turn.maxWorkers) {
-		const addHauler = register.haul.length + 1 <= register.relay.length * workerRatio;
+		const relayRatio = workerRatio * tick < 30 ? 2 : 1;
+		const addHauler = register.haul.length + 1 <= register.relay.length * relayRatio;
 		const bestRole: MarkState = addHauler ? "haul" : "relay";
 		const bestLocation = bestRole === "haul" ? memory.myStar : base;
 		if (register.idle.length) {
@@ -182,20 +189,22 @@ function optimizeWorkers() {
 	}
 
 	// haul -> relay
-	while (register.haul.length - 1 > (register.relay.length + 1) * workerRatio) {
-		if (!register.haul.length) break;
-		setRole(Utils.nearest(memory.loci.baseToStar, register.haul), "relay");
+	if (tick >= 40) {
+		while (register.haul.length - 1 > (register.relay.length + 1) * workerRatio) {
+			if (!register.haul.length) break;
+			setRole(Utils.nearest(base, register.haul), "relay");
+		}
 	}
 }
 
 /** Logs role data once per tick */
 export function log() {
-	const defendString = `Defenders: ${register.defend.length}/${Turn.idealDefenders}`;
-	const scoutString = `Scouts: ${register.scout.length}/${Turn.idealScouts}`;
+	const defendText = `Defenders: ${register.defend.length}/${Turn.idealDefenders}`;
+	const scoutText = `Scouts: ${register.scout.length}/${Turn.idealScouts}`;
 	const workerCount = register.haul.length + register.relay.length;
-	const workerString = `Workers: ${workerCount}/${Turn.maxWorkers}`;
+	const workerText = `Workers: ${workerCount}/${Turn.maxWorkers}`;
 
-	console.log(defendString + " // " + scoutString);
-	console.log(workerString + " // " + `Attackers: ${register.attack.length}`);
+	console.log(defendText + " // " + scoutText);
+	console.log(workerText + " // " + `Attackers: ${register.attack.length}`);
 	console.log(`Refueling: ${register.refuel.length} // Idle: ${register.idle.length}`);
 }

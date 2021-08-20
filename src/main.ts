@@ -12,7 +12,7 @@ const start = Date.now();
 // because the engine processes energize() commands before move() commands.
 
 Roles.update();
-for (const s of Turn.myUnits.sort((s1, s2) => s2.size - s1.size)) useEnergize(s);
+for (const s of Turn.myUnits) useEnergize(s);
 for (const s of Turn.myUnits) findMove(s);
 if (base.shape === "circles") {
 	for (const s of Turn.myUnits) useMerge(<CircleSpirit>s);

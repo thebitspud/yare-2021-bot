@@ -4,7 +4,15 @@ import "./roles";
 
 const canDefend =
 	Turn.mySupply + 1 >= Turn.enemyScouts.length * memory.enemySize * Turn.enemyShapePower;
-const enemyArriving = Turn.invaders.far.length >= Turn.enemyUnits.length / 2;
+const enemiesArriving =
+	Turn.enemyUnits.filter((e) => Utils.inRange(e, base, 900)).length >=
+	Turn.enemyUnits.length / 2;
+const enemyBasePower = Turn.myUnits
+	.filter((s) => Utils.inRange(s, enemy_base, 300))
+	.map((s) => s.energy * 2)
+	.reduce((acc, n) => acc + n, 0);
+const canWinGame =
+	enemyBasePower >= enemy_base.energy + Turn.enemyBaseDefense * enemy_base.hp;
 
 /** Attempts to select an optimal energize target for the given spirit */
 export function useEnergize(s: Spirit): void {
@@ -32,15 +40,18 @@ export function useEnergize(s: Spirit): void {
 
 	// Attack just enough to guarantee enemy base's energy goes below 0 on next tick
 	if (Utils.inRange(s, enemy_base)) {
-		if (enemy_base.energy + Turn.enemyBaseSupply >= 0) {
-			return energize(s, enemy_base, -2);
-		}
+		const canEnergize = (Turn.refuelAtCenter && s !== Turn.nearestScout) || canWinGame;
+		const notOverkill = enemy_base.energy + Turn.enemyBaseDefense >= 0;
+
+		if (canEnergize && notOverkill) return energize(s, enemy_base, -2);
 	}
 
-	const baseCannotTank = base.energy - Turn.invaders.supply * 2 <= 0;
 	// Energize base if threatened by invaders
-	if (Utils.inRange(s, base) && baseCannotTank && !Turn.enemyAllIn) {
-		return energize(s, base, 1);
+	if (Utils.inRange(s, base)) {
+		const baseCannotTank = base.energy - Turn.invaders.supply * 2 <= 0;
+		if (baseCannotTank && !Turn.enemyAllIn) {
+			return energize(s, base, 1);
+		}
 	}
 
 	const energyRatio = Utils.energyRatio(s);
@@ -92,7 +103,7 @@ export function useEnergize(s: Spirit): void {
 	if (allyTargets.length) {
 		// Energize allies in danger if not against squares
 		// Squares one-shot and overkill, so preemptive defensive energizing is a waste
-		if (!Turn.sqrEnemy) {
+		if (!Turn.vsSquares) {
 			const inDanger = allyTargets.filter((t) => t.sight.enemies_beamable.length);
 			if (inDanger.length) return energize(s, Utils.lowestEnergy(inDanger), 1);
 		}
@@ -115,7 +126,7 @@ export function useEnergize(s: Spirit): void {
 	// If no higher priority actions and is worker unit in range, energize base
 	if (Utils.inRange(s, base) && workerRoles.includes(s.mark)) {
 		const atSpawnCutoff = base.energy >= base.current_spirit_cost || base.energy === 0;
-		const stopSpawning = Turn.enemyAllIn && atSpawnCutoff && canDefend && enemyArriving;
+		const stopSpawning = Turn.enemyAllIn && atSpawnCutoff && canDefend && enemiesArriving;
 		// Stop energizing after a spawn cutoff if forced to defend
 		if (!stopSpawning) return energize(s, base, 1);
 	}

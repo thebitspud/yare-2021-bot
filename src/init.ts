@@ -1,7 +1,7 @@
 import * as Utils from "./utils";
 import * as pkg from "../package.json";
 
-export const BOT_VERSION = pkg.name[0] + " " + pkg.version;
+export const BOT_VERSION = pkg.name + " " + pkg.version;
 
 if (memory.init !== BOT_VERSION) {
 	memory = {
@@ -9,9 +9,9 @@ if (memory.init !== BOT_VERSION) {
 		settings: {
 			debug: false,
 			attackSupply: 51,
-			attackGroupSize: 0.67, // in [0, 1]
+			attackGroupSize: 0.7, // in [0, 1]
 			haulRelayRatio: 2.6,
-			maxMergeSize: 8,
+			maxMergeSize: 4,
 		},
 		config: {
 			energizeRange: 200,
@@ -36,9 +36,6 @@ if (memory.init !== BOT_VERSION) {
 		starToBase: Utils.nextPosition(memory.myStar, base),
 		centerToBase: Utils.nextPosition(memory.centerStar, base),
 		centerToOutpost: Utils.midpoint(memory.centerStar, outpost),
-		outpostAntipode: Utils.add(
-			memory.centerStar,
-			Utils.normalize(Utils.vectorTo(outpost, memory.centerStar), 199)
-		),
+		outpostAntipode: Utils.nextPosition(memory.centerStar, outpost, -198),
 	};
 }
