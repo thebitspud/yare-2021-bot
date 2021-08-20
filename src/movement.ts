@@ -10,10 +10,13 @@ let defenderRally = Utils.midpoint(memory.myStar, memory.loci.baseToCenter);
 const defendMidpoint = Utils.midpoint(...register.defend);
 
 if (Turn.enemyAllIn) {
-	const towards = Utils.midpoint(Turn.nearestEnemy, defendMidpoint, defendMidpoint);
-	if (Utils.dist(Turn.nearestEnemy, memory.myStar) < Utils.dist(Turn.nearestEnemy, base))
-		defenderRally = Utils.nextPosition(memory.myStar, towards, 125);
-	else defenderRally = Utils.nextPosition(base, towards, 75);
+	const starSide =
+		Utils.dist(Turn.nearestEnemy, memory.myStar) < Utils.dist(Turn.nearestEnemy, base);
+	defenderRally = Utils.nextPosition(
+		starSide ? memory.myStar : base,
+		Utils.midpoint(Turn.nearestEnemy, starSide ? memory.myStar : base, defendMidpoint),
+		starSide ? 150 : 100
+	);
 } else if (Turn.invaders.far.length) {
 	defenderRally = Utils.nextPosition(
 		Turn.nearestEnemy,
@@ -28,10 +31,7 @@ const scoutRally = Utils.nextPosition(
 	outpost.energy > 450 ? 625 : 450
 );
 
-const scoutPower = register.scout
-	.slice(1) // leave first scout to do its own thing
-	.map((s) => s.energy)
-	.reduce((acc, n) => acc + n, 0);
+const scoutPower = register.scout.map((s) => s.energy).reduce((acc, n) => acc + n, 0);
 
 const enemyBasePower = enemy_base.sight.friends
 	.map((id) => spirits[id].energy)
@@ -41,6 +41,13 @@ const enemyBasePower = enemy_base.sight.friends
 let outpostDisparity = scoutPower - Turn.outpostEnemyPower;
 if (Turn.enemyOutpost) outpostDisparity -= Math.max(outpost.energy, 20);
 else if (Turn.allyOutpost) outpostDisparity += Math.max(outpost.energy, 20);
+
+// Units that have a chance of engaging the enemy next turn
+const unitsInDanger = Turn.myUnits.filter((s) => {
+	const nearbyEnemies = s.sight.enemies.map((id) => spirits[id]);
+	if (!nearbyEnemies.length) return false;
+	return Utils.inRange(s, Utils.nearest(s, nearbyEnemies), 240);
+});
 
 const debug = memory.settings.debug;
 
@@ -56,20 +63,17 @@ export function findMove(s: Spirit): void {
 		nearbyEnemies
 			.map((t) => {
 				let distFactor = 1;
-				if (Utils.inRange(t, base)) distFactor = 0.25;
+				if (Utils.inRange(t, base)) distFactor = Turn.enemyAllIn ? 0 : 0.25;
 				else if (Utils.inRange(t, base, 400)) distFactor = 0.75;
 
 				return t.energy * distFactor;
 			})
 			.reduce((acc, n) => acc + n, 0) * Turn.enemyShapePower;
 
-	const allyDist = Turn.enemyAllIn ? 50 : 20;
-
-	const groupPower = s.sight.friends_beamable
-		.map((id) => spirits[id])
-		.filter((t) => Utils.dist(t, s) <= allyDist)
-		.map((t) => (Turn.vsSquares && t.energy > 0 ? t.energy_capacity : t.energy))
-		.reduce((acc, n) => acc + n, s.energy);
+	const groupPower = unitsInDanger
+		.filter((t) => Utils.inRange(s, t, 100))
+		.map((t) => t.energy)
+		.reduce((acc, n) => acc + n, 0);
 
 	// I am the enemy of my enemy
 	// Not filtering out <0 energy units because cannot predict enemy energy transfers
@@ -94,7 +98,7 @@ export function findMove(s: Spirit): void {
 
 		if (debug) s.shout("avoid");
 		return s.move(Utils.add(s, Utils.normalize(enemyPowerVec, 21)));
-	} else if (dangerRating && energyRatio > 0) {
+	} else if (dangerRating && energyRatio >= 0.2) {
 		const enemyTargets = s.sight.enemies_beamable
 			.map((t) => spirits[t])
 			.filter((t) => Utils.energyRatio(t) >= 0);
@@ -126,7 +130,7 @@ export function findMove(s: Spirit): void {
 			}
 		case "defend":
 			// Wait to intercept at the computed rally point (idle point if no nearby enemies)
-			return safeMove(s, Utils.nextPosition(s, defenderRally, 21));
+			return safeMove(s, defenderRally);
 		case "scout":
 			if (Turn.enemyOutpost || outpostDisparity < 0) {
 				if (Turn.nearestScout === s || outpostDisparity < 0) {
@@ -158,7 +162,7 @@ export function findMove(s: Spirit): void {
 					return s.move(loci.centerToOutpost);
 				} else if (canFuelOutpost && contestOutpost) {
 					// If outpost is low, move towards it to energize
-					return s.move(Utils.nextPosition(outpost, s));
+					return s.move(Utils.nextPosition(outpost, s, 100));
 				} else {
 					// If not threatened, harass enemy base and production
 					if (groupPower > enemyBasePower) {

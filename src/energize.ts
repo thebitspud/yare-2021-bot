@@ -14,6 +14,13 @@ const enemyBasePower = Turn.myUnits
 const canWinGame =
 	enemyBasePower >= enemy_base.energy + Turn.enemyBaseDefense * enemy_base.hp;
 
+// When being all-inned by squares, assume they will always attack a target no matter what
+if (Turn.enemyAllIn && enemy_base.shape === "squares") {
+	for (const e of Turn.enemyUnits) {
+		e.energy -= Math.min(e.size, e.energy);
+	}
+}
+
 /** Attempts to select an optimal energize target for the given spirit */
 export function useEnergize(s: Spirit): void {
 	const nearestStar = Utils.nearest(s, Object.values(stars));
@@ -25,15 +32,13 @@ export function useEnergize(s: Spirit): void {
 		return;
 	}
 
-	const enemyTargets = s.sight.enemies_beamable
+	let enemyTargets = s.sight.enemies_beamable
 		.map((id) => spirits[id])
 		.filter((t) => Utils.energyRatio(t) >= 0);
 
 	// Always attack enemies in range, using an algorithm optimized to maximize kill count
 	if (enemyTargets.length) {
-		const killable = enemyTargets.filter(
-			(t) => t.energy < Math.min(s.size, s.energy) * 2
-		);
+		let killable = enemyTargets.filter((t) => t.energy < Math.min(s.size, s.energy) * 2);
 		if (killable.length) return energize(s, Utils.highestEnergy(killable), -2);
 		else return energize(s, Utils.lowestEnergy(enemyTargets), -2);
 	}
@@ -139,7 +144,6 @@ export function useEnergize(s: Spirit): void {
 		}
 
 		// Energize allies of similar priority with lower energy
-		// Workers should not energize each other unless a prior condition is met
 		if (lowAllies.length) {
 			if (combatRoles.includes(s.mark)) {
 				const combatAllies = lowAllies.filter((t) => combatRoles.includes(t.mark));

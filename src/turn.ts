@@ -130,13 +130,12 @@ function getMaxWorkers(): number {
 
 	// If very close to being able to attack, worker limit is removed
 	let supplyRatio = mySupply / memory.settings.attackSupply;
-	if (supplyRatio >= 0.7) return memory.settings.attackSupply;
+	if (supplyRatio >= 0.75) return memory.settings.attackSupply;
 
 	// Can over-harvest if star is near energy cap
 	// Or after hitting certain supply thresholds
 	let energyRegenCap = Utils.energyPerTick(memory.myStar);
 	if (memory.myStar.energy > 975) energyRegenCap++;
-	if (supplyRatio >= 0.5) energyRegenCap++;
 	if (supplyRatio >= 0.6) energyRegenCap++;
 
 	// Calculate ideal worker count
@@ -182,11 +181,11 @@ if (memory.strategy === "rally") {
 	}
 }
 
-const canBeatBase = myEnergy * 2 > enemy_base.energy + enemyBaseDefense * enemy_base.hp;
 const powerRatio = myEnergy / (enemyEnergy * enemyShapePower);
+const shouldRetreat = mySupply < memory.settings.attackSupply / 2 && powerRatio < 0.8;
 
 // Retreating if bot cannot win fight
-if (memory.strategy === "all-in" && !canBeatBase && powerRatio < 1) {
+if (memory.strategy === "all-in" && shouldRetreat) {
 	memory.strategy = "economic";
 	memory.allCenter = false;
 }
