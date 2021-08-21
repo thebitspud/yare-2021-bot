@@ -35,7 +35,8 @@ if (memory.init !== BOT_VERSION) {
 
 export const settings = {
 	debug: true,
-	attackSupply: 51,
+	allInSupply: 51,
+	retakeSupply: 51,
 	attackGroupSize: 0.7, // float in [0, 1]
 	haulRelayRatio: 2.6,
 	maxMergeSize: 3, // 1 to never merge

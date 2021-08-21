@@ -103,7 +103,7 @@ for (const e of enemyUnits) {
 }
 
 export const enemyScouts = enemyUnits.filter((e) => {
-	return Utils.inRange(e, base, 1000) || Utils.inRange(e, memory.myStar, 1000);
+	return Utils.inRange(e, base, 1100) || Utils.inRange(e, memory.myStar, 1200);
 });
 
 /* MACRO STRATEGY */
@@ -126,7 +126,8 @@ if (isAttacking) {
 // Any lower and you either have idle units or an over-harvesting problem
 // Any higher and you hit the 51 supply threshold late
 export let idealScouts = 0;
-if (!vsSquares || (tick >= 30 && !enemyAllIn)) {
+if (mySupply > 51) idealScouts = settings.minScouts;
+else if (!vsSquares || (tick >= 35 && !enemyAllIn)) {
 	idealScouts = Math.ceil(
 		Math.max(
 			settings.minScouts + myUnits.length / 8,
@@ -136,7 +137,7 @@ if (!vsSquares || (tick >= 30 && !enemyAllIn)) {
 }
 
 const canBeatAll = myCapacity > enemy_base.energy + enemyCapacity * enemyShapePower * 2.5;
-const readyToAttack = mySupply >= settings.attackSupply || canBeatAll;
+const readyToAttack = mySupply >= settings.allInSupply || canBeatAll;
 
 // Starting an attack on the enemy base
 if (!isAttacking && readyToAttack) memory.strategy = "rally";
@@ -178,7 +179,7 @@ if (memory.strategy === "rally") {
 }
 
 const powerRatio = myEnergy / (enemyEnergy * enemyShapePower);
-const shouldRetreat = mySupply < settings.attackSupply / 2 && powerRatio < 0.8;
+const shouldRetreat = mySupply < settings.allInSupply / 2 && powerRatio < 0.8;
 
 // Retreating if bot cannot win fight
 if (memory.strategy === "all-in" && shouldRetreat) {
@@ -188,7 +189,7 @@ if (memory.strategy === "all-in" && shouldRetreat) {
 
 // Maintaining an optimal number of workers at all times
 function getMaxWorkers(): number {
-	const supplyCap = settings.attackSupply;
+	const supplyCap = settings.allInSupply;
 	// If being all-inned, harvest as much as possible before defending
 	if (enemyAllIn || (tick < 30 && vsSquares)) return supplyCap;
 
@@ -199,7 +200,7 @@ function getMaxWorkers(): number {
 
 	if (!canHarvestCenter) {
 		// Can over-harvest if star is near energy cap and center not available
-		if (mySupply >= supplyCap - 13) return supplyCap;
+		if (mySupply >= supplyCap - 15) return supplyCap;
 		if (memory.myStar.energy > 975) energyRegenCap++;
 	}
 

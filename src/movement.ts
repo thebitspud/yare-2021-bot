@@ -84,7 +84,7 @@ export function findMove(s: Spirit): void {
 	// Not filtering out <0 energy units because cannot predict enemy energy transfers
 	const explodeThreats = s.sight.enemies_beamable
 		.map((id) => spirits[id])
-		.filter((t) => t.sight.enemies_beamable.length >= 4);
+		.filter((t) => t.sight.enemies_beamable.length >= 3);
 
 	if (Turn.vsTriangles && explodeThreats.length) {
 		// Always kite out of explode range vs triangles
@@ -203,6 +203,8 @@ export function findMove(s: Spirit): void {
 			if (Utils.inRange(s, memory.enemyStar, 600)) starList.push(memory.enemyStar);
 			const nearestStar = Utils.nearest(s, starList);
 			let towards = Utils.inRange(s, nearestStar) ? Turn.rallyPosition : s;
+			if (Turn.enemyAllIn || Turn.mySupply <= settings.allInSupply / 2)
+				towards = defenderRally;
 			if (Turn.enemyOutpost && nearestStar === memory.centerStar)
 				towards = loci.outpostAntipode;
 
@@ -211,13 +213,14 @@ export function findMove(s: Spirit): void {
 		case "idle":
 		default:
 			if (Turn.refuelAtCenter) {
+				const harvestFrom = Turn.enemyOutpost ? loci.centerToBase : loci.outpostAntipode;
 				// Harvest energy from center if able to and nothing better to do
 				if (energyRatio > 0 && Utils.inRange(s, base)) {
 					return safeMove(s, loci.baseToCenter);
 				} else if (energyRatio < 1 && Utils.inRange(s, memory.centerStar)) {
-					return safeMove(s, loci.centerToBase);
+					return safeMove(s, harvestFrom);
 				} else {
-					const bestNext = s.energy >= 5 ? loci.baseToCenter : loci.centerToBase;
+					const bestNext = s.energy >= 5 ? loci.baseToCenter : harvestFrom;
 					return safeMove(s, bestNext);
 				}
 			} else {
