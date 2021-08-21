@@ -1,4 +1,4 @@
-import { BOT_VERSION } from "./init";
+import { BOT_VERSION, settings } from "./init";
 import * as Utils from "./utils";
 
 /* FRIENDLY UNITS */
@@ -35,7 +35,8 @@ export const nearestEnemy =
 
 export const vsSquares = enemy_base.shape === "squares";
 export const vsTriangles = enemy_base.shape === "triangles";
-export const enemyShapePower = vsSquares ? 0.7 : vsTriangles ? 0.85 : 1;
+export const vsCircles = enemy_base.shape === "circles";
+export const enemyShapePower = vsSquares ? 0.66 : vsTriangles ? 0.85 : 1;
 
 /**
  * NOTE: All units in <near> are also in <med> and <far>
@@ -101,62 +102,73 @@ for (const e of enemyUnits) {
 	enemySupply += e.size;
 }
 
-/* MACRO STRATEGY */
-
 export const enemyScouts = enemyUnits.filter((e) => {
 	return Utils.inRange(e, base, 1000) || Utils.inRange(e, memory.myStar, 1000);
 });
+
+/* MACRO STRATEGY */
+
 export const enemyAllIn = enemyScouts.length > 0.75 * enemyUnits.length;
 
 export const isAttacking = ["rally", "all-in"].includes(memory.strategy);
-export const refuelAtCenter =
-	memory.centerStar.active_in < 25 && (!enemyOutpost || outpost.energy < 300);
+export const refuelAtCenter = canRefuelCenter();
 
 export const maxWorkers = getMaxWorkers();
 export let idealDefenders = Math.ceil(invaders.threat / (memory.mySize * 10));
-if (isAttacking) idealDefenders += vsSquares ? 5 : 3;
-idealDefenders = Math.min(idealDefenders, Math.floor(enemySupply * enemyShapePower));
+if (isAttacking) {
+	const allyDist = Utils.dist(nearestScout, enemy_base);
+	const enemyDist = Utils.dist(nearestEnemy, base);
+	if (allyDist + (vsSquares ? 400 : 150) > enemyDist && enemySupply > 0) {
+		idealDefenders += settings.allInGuards * (vsSquares ? 2 : 1);
+	}
+}
 // From experience, a 3 scout start is optimal
 // Any lower and you either have idle units or an over-harvesting problem
 // Any higher and you hit the 51 supply threshold late
 export let idealScouts = 0;
-if (!vsSquares || (tick >= 50 && !enemyAllIn)) {
+if (!vsSquares || (tick >= 30 && !enemyAllIn)) {
 	idealScouts = Math.ceil(
-		Math.max(1 + myUnits.length / 8, (myUnits.length - maxWorkers - idealDefenders) / 2)
+		Math.max(
+			settings.minScouts + myUnits.length / 8,
+			(myUnits.length - maxWorkers - idealDefenders) * (refuelAtCenter ? 0.5 : 1)
+		)
 	);
 }
 
 const canBeatAll = myCapacity > enemy_base.energy + enemyCapacity * enemyShapePower * 2.5;
-const readyToAttack = mySupply >= memory.settings.attackSupply || canBeatAll;
+const readyToAttack = mySupply >= settings.attackSupply || canBeatAll;
 
 // Starting an attack on the enemy base
 if (!isAttacking && readyToAttack) memory.strategy = "rally";
 
 export const rallyStar = memory.allCenter ? memory.centerStar : memory.myStar;
-export const rallyPosition = allyOutpost
-	? memory.loci.centerToOutpost
-	: Utils.nextPosition(
-			outpost,
-			Utils.midpoint(base, memory.loci.outpostAntipode),
-			outpost.energy > 350 ? 625 : 450
-	  );
+export let rallyPosition = memory.loci.centerToOutpost;
+if (enemyOutpost) {
+	const range = outpost.energy > 350 ? 625 : 450;
+	const towards = Utils.midpoint(base, memory.loci.outpostAntipode);
+	rallyPosition = Utils.nextPosition(outpost, towards, range);
+}
 
 if (memory.strategy === "rally") {
+	const attackers = myUnits.filter((s) => s.mark === "attack");
+	if (attackers.length) {
+		rallyPosition = Utils.lerp(rallyPosition, Utils.midpoint(...attackers), 0.67);
+	}
+
 	let groupedSupply = 0;
 	for (const s of myUnits) {
-		if (Utils.inRange(s, rallyPosition, 40)) {
+		if (Utils.inRange(s, rallyPosition, 50)) {
 			groupedSupply += s.size;
 		}
 	}
 
-	if (!memory.allCenter) {
-		const centerHasEnergy =
-			memory.centerStar.energy > (myCapacity - myEnergy) * (allyOutpost ? 0.5 : 1);
-		memory.allCenter = refuelAtCenter && centerHasEnergy;
-	}
+	const centerHasEnergy =
+		memory.centerStar.energy > (myCapacity - myEnergy) * (allyOutpost ? 0.5 : 1);
+	memory.allCenter =
+		centerHasEnergy && (memory.allCenter ? canRefuelCenter() : !enemyOutpost);
 
 	const groupReq =
-		groupedSupply >= (mySupply - idealDefenders) * memory.settings.attackGroupSize;
+		groupedSupply >= (mySupply - idealDefenders) * settings.attackGroupSize;
 	const starReq = myEnergy / myCapacity >= 0.9 || rallyStar.energy < mySupply / 2;
 
 	// Waiting until enough units have arrived before all-inning
@@ -166,7 +178,7 @@ if (memory.strategy === "rally") {
 }
 
 const powerRatio = myEnergy / (enemyEnergy * enemyShapePower);
-const shouldRetreat = mySupply < memory.settings.attackSupply / 2 && powerRatio < 0.8;
+const shouldRetreat = mySupply < settings.attackSupply / 2 && powerRatio < 0.8;
 
 // Retreating if bot cannot win fight
 if (memory.strategy === "all-in" && shouldRetreat) {
@@ -176,22 +188,41 @@ if (memory.strategy === "all-in" && shouldRetreat) {
 
 // Maintaining an optimal number of workers at all times
 function getMaxWorkers(): number {
+	const supplyCap = settings.attackSupply;
 	// If being all-inned, harvest as much as possible before defending
-	if (enemyAllIn) return memory.settings.attackSupply;
+	if (enemyAllIn || (tick < 30 && vsSquares)) return supplyCap;
 
-	// If very close to being able to attack, worker limit is removed
-	let supplyRatio = mySupply / memory.settings.attackSupply;
-	if (supplyRatio >= 0.75) return memory.settings.attackSupply;
-
-	// Can over-harvest if star is near energy cap
-	// Or after hitting certain supply thresholds
 	let energyRegenCap = Utils.energyPerTick(memory.myStar);
-	if (memory.myStar.energy > 975) energyRegenCap++;
-	if (supplyRatio >= 0.5) energyRegenCap++;
+	const canHarvestCenter = refuelAtCenter && memory.centerStar.energy >= mySupply;
+
+	if (mySupply >= supplyCap - 25) energyRegenCap++;
+
+	if (!canHarvestCenter) {
+		// Can over-harvest if star is near energy cap and center not available
+		if (mySupply >= supplyCap - 13) return supplyCap;
+		if (memory.myStar.energy > 975) energyRegenCap++;
+	}
+
+	if (mySupply < supplyCap - 50) energyRegenCap -= 0.5;
 
 	// Calculate ideal worker count
-	const workerEfficiency = 1 / (memory.settings.haulRelayRatio + 1);
+	const workerEfficiency = 1 / (settings.haulRelayRatio + 1);
 	return Math.floor(energyRegenCap / workerEfficiency);
+}
+
+function canRefuelCenter() {
+	if (memory.centerStar.active_in >= 25) return false;
+	if (!enemyOutpost) return true;
+	if (outpost.energy > 300) return false;
+	const centerThreat =
+		enemyShapePower *
+		enemyUnits
+			.filter((e) => Utils.inRange(e, memory.loci.outpostAntipode))
+			.map((e) => e.energy)
+			.reduce((acc, n) => acc + n, 0);
+
+	if (!isAttacking) return centerThreat === 0;
+	return centerThreat <= (300 - outpost.energy) / 10 + myEnergy * 0.25;
 }
 
 /** Logs turn data once per tick */

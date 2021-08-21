@@ -1,3 +1,4 @@
+import { settings } from "./init";
 import * as Utils from "./utils";
 import * as Turn from "./turn";
 
@@ -13,7 +14,7 @@ export const register: { [key in MarkState]: Spirit[] } = {
 };
 
 for (const s of Turn.myUnits) register[s.mark].push(s);
-const workerRatio = memory.settings.haulRelayRatio;
+const workerRatio = settings.haulRelayRatio;
 
 /** Sets the role of a spirit and updates the current role register to match */
 function setRole(s: Spirit, role: MarkState) {
@@ -25,7 +26,7 @@ function setRole(s: Spirit, role: MarkState) {
 	register[s.mark].splice(index, 1);
 	register[role].push(s);
 	s.set_mark(role);
-	if (memory.settings.debug) s.shout(s.mark);
+	if (settings.debug) s.shout(s.mark);
 }
 
 /** Updates the roles of all spirits according to current turn state */
@@ -37,15 +38,15 @@ export function update(): void {
 
 /** Removes units from over-saturated roles and sets them to idle */
 function removeExtras() {
-	const refuelable: MarkState[] = ["defend", "attack", "scout", "idle"];
+	let refuelable: MarkState[] = ["defend", "attack", "scout"];
+	if (!Turn.refuelAtCenter) refuelable.push("idle");
 
 	// REFUEL
 	// This must be called before the other extra-removing methods
 	for (const s of Turn.myUnits) {
 		const energyRatio = Utils.energyRatio(s);
 		// Size 1 units can be more aggressive vs squares and triangles
-		const retreatThreshold =
-			(Turn.vsSquares || Turn.vsTriangles) && s.size <= 1 ? 0 : 0.15;
+		const retreatThreshold = !Turn.vsCircles && s.size <= 1 ? 0 : 0.15;
 		// Non-worker units with low energy should always retreat and refuel
 		if (energyRatio <= retreatThreshold && refuelable.includes(s.mark)) {
 			setRole(s, "refuel");
@@ -87,8 +88,8 @@ function removeExtras() {
 
 	// WORKERS
 	// Should generally avoid shuffling around worker roles
-	if ([...register.relay, ...register.haul].length > Math.max(Turn.maxWorkers, 0) + 3) {
-		const removeHauler = register.haul.length > (register.relay.length - 1) * workerRatio;
+	if ([...register.relay, ...register.haul].length > Math.max(Turn.maxWorkers, 0) + 1) {
+		const removeHauler = register.haul.length - 1 >= register.relay.length * workerRatio;
 		const list = removeHauler ? register.haul : register.relay;
 		if (list.length) setRole(Utils.nearest(memory.myStar, list), "idle");
 	}
@@ -110,7 +111,7 @@ function assignRoles() {
 	// DEFENDERS
 	while (register.defend.length < Turn.idealDefenders) {
 		// Try to fill with idle units first
-		const validIdle = register.idle.filter((s) => Utils.energyRatio(s) >= 0.5);
+		const validIdle = register.idle.filter((s) => Utils.energyRatio(s) > 0.5);
 		if (validIdle.length) {
 			setRole(Utils.nearest(Turn.nearestEnemy, validIdle), "defend");
 			continue;
@@ -128,7 +129,7 @@ function assignRoles() {
 		// Otherwise, can fill with attackers/scouts if necessary
 		const validAttackers = [...register.attack, ...register.scout].filter(
 			(s) =>
-				Utils.energyRatio(s) >= 0.8 &&
+				Utils.energyRatio(s) > 0.5 &&
 				Utils.inRange(base, s, 800) &&
 				s.size === memory.mySize
 		);
@@ -149,10 +150,10 @@ function assignRoles() {
 		if (mustDefend) {
 			for (const s of Turn.myUnits) {
 				if (!["defend", "refuel"].includes(s.mark)) {
-					setRole(s, Utils.energyRatio(s) <= 0.5 ? "refuel" : "defend");
+					setRole(s, Utils.energyRatio(s) < 0.5 ? "refuel" : "defend");
 				}
 
-				if (mustGroup && s.mark === "refuel" && Utils.energyRatio(s) >= 0.5) {
+				if (mustGroup && s.mark === "refuel" && Utils.energyRatio(s) > 0.5) {
 					setRole(s, "defend");
 				}
 			}
@@ -172,7 +173,7 @@ function assignRoles() {
 
 	// WORKERS
 	while (register.relay.length + register.haul.length < Turn.maxWorkers) {
-		const relayRatio = workerRatio * tick < 30 ? 2 : 1;
+		const relayRatio = workerRatio * (tick < 25 ? 1.5 : 1);
 		const addHauler = register.haul.length + 1 <= register.relay.length * relayRatio;
 		const bestRole: MarkState = addHauler ? "haul" : "relay";
 		const bestLocation = bestRole === "haul" ? memory.myStar : base;
@@ -191,7 +192,7 @@ function optimizeWorkers() {
 
 	// haul -> relay
 	if (tick >= 40) {
-		while (register.haul.length - 1 > (register.relay.length + 1) * workerRatio) {
+		while (register.haul.length - 1 >= (register.relay.length + 1) * workerRatio) {
 			if (!register.haul.length) break;
 			setRole(Utils.nearest(base, register.haul), "relay");
 		}

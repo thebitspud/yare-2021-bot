@@ -11,8 +11,7 @@ const enemyBasePower = Turn.myUnits
 	.filter((s) => Utils.inRange(s, enemy_base, 300))
 	.map((s) => Math.min(s.size, s.energy) * 2)
 	.reduce((acc, n) => acc + n, 0);
-const canWinGame =
-	enemyBasePower >= enemy_base.energy + Turn.enemyBaseDefense * enemy_base.hp;
+const canWinGame = enemyBasePower >= enemy_base.energy + Turn.enemyBaseDefense;
 
 // When being all-inned by squares, assume they will always attack a target no matter what
 if (Turn.enemyAllIn && enemy_base.shape === "squares") {
@@ -90,7 +89,9 @@ export function useEnergize(s: Spirit): void {
 		.map((id) => spirits[id])
 		.filter((t) => Utils.energyRatio(t) < 1);
 
-	const workerRoles: MarkState[] = ["haul", "relay"];
+	let workerRoles: MarkState[] = ["haul", "relay"];
+	if (Turn.refuelAtCenter) workerRoles.push("idle");
+
 	let combatRoles: MarkState[] = ["scout", "defend", "attack"];
 	if (Turn.enemyAllIn || memory.strategy === "rally") combatRoles.push("refuel");
 

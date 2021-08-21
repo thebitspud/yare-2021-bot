@@ -2,17 +2,14 @@
 export function dist(from: Position | Entity, to: Position | Entity): number {
 	if ("position" in from) from = from.position;
 	if ("position" in to) to = to.position;
-	const xDist = from[0] - to[0];
-	const yDist = from[1] - to[1];
-
-	return Math.sqrt(xDist ** 2 + yDist ** 2);
+	return Math.sqrt((from[0] - to[0]) ** 2 + (from[1] - to[1]) ** 2);
 }
 
 /**
- * Normalizes a given vector to a specified length
+ * Normalizes a {vec} to the length of {mag}
  * @param vec position vector to normalize
  * @param mag (optional, default: 1) desired length (magnitude) of the output vector
- * <br>Setting <mag> to a negative number will reverse the input vector's direction
+ * <br>Setting {mag} to a negative number will reverse the input vector's direction
  */
 export function normalize(vec: Position, mag = 1): Position {
 	const length = dist(vec, [0, 0]);
@@ -42,8 +39,8 @@ export function multiply(vec: Position, factor: number): Position {
 }
 
 /**
- * Returns the vector beginning at <start> and ending at <target>
- * <br>NOTE: If using for subtraction, output vector will be of form <target> - <start>
+ * Returns the vector beginning at {start} and ending at {target}
+ * <br>NOTE: If using for subtraction, output vector will be of form {target} - {start}
  */
 export function vectorTo(start: Position | Entity, target: Position | Entity): Position {
 	if ("position" in start) start = start.position;
@@ -52,7 +49,7 @@ export function vectorTo(start: Position | Entity, target: Position | Entity): P
 }
 
 /**
- * Returns true if the distance between two positions is below <range>
+ * Returns true if the distance between two positions is below {range}
  * @param from first entity or position
  * @param to second entity or position
  * @param range (optional, default: ENERGIZE_RANGE)
@@ -65,6 +62,21 @@ export function inRange(
 	return dist(from, to) < range;
 }
 
+/** Returns an interpolated point between the given positions, weighted according to {bias}
+ * <br>{bias} > 0.5 returns a position closer to {to} than {from}
+ * <br>{bias} < 0 returns a position before {from}
+ * <br>{bias} > 1 returns a position past {to}
+ */
+export function lerp(
+	from: Position | Entity,
+	to: Position | Entity,
+	bias = 0.5
+): Position {
+	if ("position" in from) from = from.position;
+	if ("position" in to) to = to.position;
+	return [from[0] * (1 - bias) + to[0] * bias, from[1] * (1 - bias) + to[1] * bias];
+}
+
 /** Returns the balancing point between the given positions */
 export function midpoint(...entries: (Position | Entity)[]): Position {
 	if (!entries.length) return memory.centerStar.position;
@@ -72,8 +84,8 @@ export function midpoint(...entries: (Position | Entity)[]): Position {
 }
 
 /**
- * Returns the position <range> units away from <tether> in the direction of <target>
- * (ie. the closest point to <target> on a <range> radius circle centered at <tether>)
+ * Returns the position {range} units away from {tether} in the direction of {target}
+ * (ie. the closest point to {target} on a {range} radius circle centered at {tether})
  * @param tether position to start from
  * @param target position to move towards
  * @param range total distance to move
@@ -90,7 +102,7 @@ export function nextPosition(
 
 /**
  * Finds the entity closest to a given position out of the specified list
- * <br>To find the farthest entity, see sister function farthest()
+ * <br>To find the farthest entity, see sister function {farthest()}
  * @param from position to search from
  * @param list list of entities to choose from
  * <br>CONSTRAINT: list cannot be empty
@@ -112,7 +124,7 @@ export function nearest<T extends Entity>(from: Position | Entity, list: T[]): T
 
 /**
  * Finds the entity farthest from a given position out of the specified list
- * <br>To find the nearest entity, see sister function nearest()
+ * <br>To find the nearest entity, see sister function {nearest()}
  * @param from position to search from
  * @param list list of entities to choose from
  * <br>CONSTRAINT: list cannot be empty
@@ -134,7 +146,7 @@ export function farthest<T extends Entity>(from: Position | Entity, list: T[]): 
 
 /**
  * Returns the entity from the given list with the lowest energy
- * <br>To get the highest energy entity, see sister function highestEnergy()
+ * <br>To get the highest energy entity, see sister function {highestEnergy()}
  * <br>CONSTRAINT: list cannot be empty
  */
 export function lowestEnergy<T extends Entity>(list: T[]): T {
@@ -147,7 +159,7 @@ export function lowestEnergy<T extends Entity>(list: T[]): T {
 
 /**
  * Returns the entity from the given list with the highest energy
- * <br>To get the lowest energy entity, see sister function lowestEnergy()
+ * <br>To get the lowest energy entity, see sister function {lowestEnergy()}
  * <br>CONSTRAINT: list cannot be empty
  */
 export function highestEnergy<T extends Entity>(list: T[]): T {
@@ -163,7 +175,7 @@ export function energyPerTick(star: Star): number {
 	return Math.round(3 + star.energy / 100);
 }
 
-/** Returns the given entity's (current energy)/(energy capacity) ratio */
+/** Returns the given entity's energy/capacity ratio */
 export function energyRatio(entity: Entity): number {
 	return entity.energy / entity.energy_capacity;
 }

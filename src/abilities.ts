@@ -1,11 +1,10 @@
+import { settings } from "./init";
 import * as Utils from "./utils";
 import * as Turn from "./turn";
 
 export function useMerge(s: CircleSpirit) {
 	const shouldMerge =
-		s.mark === "attack" &&
-		enemy_base.shape === "triangles" &&
-		(Utils.dist(s, Turn.rallyPosition) < 50 || memory.strategy === "all-in");
+		s.mark === "attack" && enemy_base.shape === "triangles" && Turn.isAttacking;
 
 	if (!shouldMerge) {
 		if (s.size > 1 && s.energy < s.size) s.divide();
@@ -15,7 +14,7 @@ export function useMerge(s: CircleSpirit) {
 	const mergeTargets = <CircleSpirit[]>(
 		Turn.myUnits.filter(
 			(t) =>
-				t.size + s.size <= memory.settings.maxMergeSize &&
+				t.size + s.size <= settings.maxMergeSize &&
 				t.mark === s.mark &&
 				t != s &&
 				Utils.inRange(s, t, memory.config.mergeRange)

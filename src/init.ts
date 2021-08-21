@@ -6,13 +6,6 @@ export const BOT_VERSION = pkg.name + " " + pkg.version;
 if (memory.init !== BOT_VERSION) {
 	memory = {
 		init: BOT_VERSION,
-		settings: {
-			debug: true,
-			attackSupply: 51,
-			attackGroupSize: 0.7, // in [0, 1]
-			haulRelayRatio: 2.6,
-			maxMergeSize: 4, // 1 to never merge
-		},
 		config: {
 			energizeRange: 200,
 			sightRange: 400,
@@ -39,3 +32,13 @@ if (memory.init !== BOT_VERSION) {
 		outpostAntipode: Utils.nextPosition(memory.centerStar, outpost, -198),
 	};
 }
+
+export const settings = {
+	debug: true,
+	attackSupply: 51,
+	attackGroupSize: 0.7, // float in [0, 1]
+	haulRelayRatio: 2.6,
+	maxMergeSize: 3, // 1 to never merge
+	allInGuards: 3,
+	minScouts: 1,
+};
