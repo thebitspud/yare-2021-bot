@@ -32,7 +32,10 @@ const scoutRally = Utils.nextPosition(
 	outpost.energy > 450 ? 625 : 450
 );
 
-const scoutPower = register.scout.map((s) => s.energy).reduce((acc, n) => acc + n, 0);
+const scoutPower = Turn.myUnits
+	.filter((s) => ["attack", "scout"].includes(s.mark))
+	.map((s) => s.energy)
+	.reduce((acc, n) => acc + n, 0);
 
 const enemyBasePower = enemy_base.sight.friends
 	.map((id) => spirits[id].energy)
@@ -40,8 +43,8 @@ const enemyBasePower = enemy_base.sight.friends
 
 // Positive if ally units are stronger, negative if enemy stronger
 let outpostDisparity = scoutPower - Turn.outpostEnemyPower;
-if (Turn.enemyOutpost) outpostDisparity -= Math.max(outpost.energy, 20);
-else if (Turn.allyOutpost) outpostDisparity += Math.max(outpost.energy, 20);
+if (Turn.enemyOutpost) outpostDisparity -= Math.max(outpost.energy / 2, 20);
+else if (Turn.allyOutpost) outpostDisparity += Math.max(outpost.energy / 2, 20);
 
 // Units that have a chance of engaging the enemy next turn
 const unitsInDanger = Turn.myUnits.filter((s) => {
@@ -153,7 +156,9 @@ export function findMove(s: Spirit): void {
 						return safeMove(s, blocker, 602);
 					}
 				} else {
-					if (allyPower >= Math.min(Turn.outpostEnemyPower, scoutPower / 2)) {
+					const enemyHoldPower =
+						Turn.outpostEnemyPower + Math.max(outpost.energy / 2, 20);
+					if (allyPower >= Math.max(enemyHoldPower, scoutPower * 0.67)) {
 						// Retake the outpost once scouts are grouped and ready
 						return s.move(Utils.nextPosition(outpost, s));
 					} else {
@@ -213,7 +218,7 @@ export function findMove(s: Spirit): void {
 		case "idle":
 		default:
 			if (Turn.refuelAtCenter) {
-				const harvestFrom = Turn.enemyOutpost ? loci.centerToBase : loci.outpostAntipode;
+				const harvestFrom = Turn.enemyOutpost ? loci.outpostAntipode : loci.centerToBase;
 				// Harvest energy from center if able to and nothing better to do
 				if (energyRatio > 0 && Utils.inRange(s, base)) {
 					return safeMove(s, loci.baseToCenter);
@@ -230,6 +235,11 @@ export function findMove(s: Spirit): void {
 	}
 }
 
+const enemyRetakePower = Turn.enemyUnits
+	.filter((e) => Utils.inRange(e, outpost, 400))
+	.map((e) => e.energy)
+	.reduce((acc, n) => acc + n, 0);
+
 /**
  * Moves the specified unit towards a target while avoiding hostile outposts
  * @param s player unit to receive move command
@@ -238,21 +248,24 @@ export function findMove(s: Spirit): void {
  */
 function safeMove(s: Spirit, target: Position | Entity, range?: number) {
 	if ("position" in target) target = target.position;
-	// Just move normally if outpost is not hostile
-	if (!Turn.enemyOutpost) return s.move(target);
+	// Just move normally if outpost is safe
+	if (!Turn.enemyOutpost && (outpostDisparity >= 0 || enemyRetakePower < scoutPower))
+		return s.move(target);
 
 	// Movement vector that spirit would follow normally and resulting position
 	const unsafeNext = Utils.nextPosition(s, target, 21);
 
 	// Size 20 vector from spirit to outpost used to calculate rotated vectors
-	const toOutpost = Utils.normalize(Utils.vectorTo(s, outpost), 20);
+	const toOutpost = Utils.normalize(Utils.vectorTo(s, outpost), 21);
 
 	// Automatically use outer range if outpost is empowered or close to becoming empowered
 	if (!range) range = outpost.energy > 400 ? 600 : 400;
 
 	if (Utils.inRange(s, outpost, range)) {
 		// Move out of outpost range if currently inside
-		s.move(Utils.add(s, Utils.multiply(toOutpost, -1.5), Utils.vectorTo(s, unsafeNext)));
+		const fromOutpost = Utils.multiply(toOutpost, -1);
+		const adjustedTo = Utils.add(fromOutpost, Utils.vectorTo(s, unsafeNext));
+		s.move(Utils.add(s, Utils.normalize(adjustedTo, 21)));
 	} else if (Utils.inRange(unsafeNext, outpost, range + 1)) {
 		// Movement vectors tangential to outpost range circle
 		const cwTo = Utils.add(s, [-toOutpost[1], toOutpost[0]]);

@@ -11,7 +11,7 @@ const enemyBasePower = Turn.myUnits
 	.filter((s) => Utils.inRange(s, enemy_base, 300))
 	.map((s) => Math.min(s.size, s.energy) * 2)
 	.reduce((acc, n) => acc + n, 0);
-const canWinGame = enemyBasePower >= enemy_base.energy + Turn.enemyBaseDefense;
+const canWinGame = enemyBasePower >= enemy_base.energy / 2 + Turn.enemyBaseDefense;
 
 // When being all-inned by squares, assume they will always attack a target no matter what
 if (Turn.enemyAllIn && enemy_base.shape === "squares") {
@@ -46,7 +46,10 @@ export function useEnergize(s: Spirit): void {
 
 	// Attack just enough to guarantee enemy base's energy goes below 0 on next tick
 	if (Utils.inRange(s, enemy_base)) {
-		const canEnergize = (Turn.refuelAtCenter && s !== Turn.nearestScout) || canWinGame;
+		const canEnergize =
+			(Turn.refuelAtCenter && s !== Turn.nearestScout) ||
+			canWinGame ||
+			memory.strategy == "all-in";
 		const notOverkill = enemy_base.energy + Turn.enemyBaseDefense >= 0;
 
 		if (canEnergize && notOverkill) return energize(s, enemy_base);

@@ -30,7 +30,7 @@ export const enemyUnits = Object.values(spirits).filter(
 	(s) => s.hp > 0 && !myUnits.includes(s)
 );
 export const nearestEnemy =
-	Utils.nearest(base, enemyUnits) ??
+	Utils.nearest(memory.loci.baseToStar, enemyUnits) ??
 	Object.values(spirits).filter((s) => !my_spirits.includes(s))[0];
 
 export const vsSquares = enemy_base.shape === "squares";
@@ -118,7 +118,7 @@ export let idealDefenders = Math.ceil(invaders.threat / (memory.mySize * 10));
 if (isAttacking) {
 	const allyDist = Utils.dist(nearestScout, enemy_base);
 	const enemyDist = Utils.dist(nearestEnemy, base);
-	if (allyDist + (vsSquares ? 400 : 150) > enemyDist && enemySupply > 0) {
+	if (allyDist + (vsSquares ? 500 : 250) > enemyDist && enemySupply > 0) {
 		idealDefenders += settings.allInGuards * (vsSquares ? 2 : 1);
 	}
 }
@@ -126,12 +126,12 @@ if (isAttacking) {
 // Any lower and you either have idle units or an over-harvesting problem
 // Any higher and you hit the 51 supply threshold late
 export let idealScouts = 0;
-if (mySupply > 51) idealScouts = settings.minScouts;
+if (mySupply > 51 || !settings.extraScouts) idealScouts = settings.minScouts;
 else if (!vsSquares || (tick >= 35 && !enemyAllIn)) {
 	idealScouts = Math.ceil(
 		Math.max(
 			settings.minScouts + myUnits.length / 8,
-			(myUnits.length - maxWorkers - idealDefenders) * (refuelAtCenter ? 0.5 : 1)
+			(myUnits.length - maxWorkers - idealDefenders) * 0.5
 		)
 	);
 }
@@ -196,13 +196,10 @@ function getMaxWorkers(): number {
 	let energyRegenCap = Utils.energyPerTick(memory.myStar);
 	const canHarvestCenter = refuelAtCenter && memory.centerStar.energy >= mySupply;
 
-	if (mySupply >= supplyCap - 25) energyRegenCap++;
-
-	if (!canHarvestCenter) {
-		// Can over-harvest if star is near energy cap and center not available
-		if (mySupply >= supplyCap - 15) return supplyCap;
-		if (memory.myStar.energy > 975) energyRegenCap++;
-	}
+	// Can over-harvest if star has sufficient energy and nearing attack supply
+	if (mySupply >= supplyCap - 25 && memory.myStar.energy > 250) energyRegenCap++;
+	// Can over-harvest if star is near energy cap and center not available
+	if (!canHarvestCenter && mySupply >= supplyCap - 12) return supplyCap;
 
 	if (mySupply < supplyCap - 50) energyRegenCap -= 0.5;
 

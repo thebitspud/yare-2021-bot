@@ -166,7 +166,8 @@ function assignRoles() {
 	// SCOUTS
 	while (register.scout.length + register.refuel.length < Turn.idealScouts) {
 		// Fill with idle units when possible
-		if (register.idle.length) {
+		const validIdle = register.idle.filter((s) => Utils.energyRatio(s) > 0.5);
+		if (validIdle.length) {
 			setRole(Utils.nearest(memory.centerStar, register.idle), "scout");
 		} else break; // If cannot fill, break to prevent infinite loop
 	}

@@ -42,4 +42,5 @@ export const settings = {
 	maxMergeSize: 3, // 1 to never merge
 	allInGuards: 3,
 	minScouts: 1,
+	extraScouts: true,
 };
