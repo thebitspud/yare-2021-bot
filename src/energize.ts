@@ -3,7 +3,7 @@ import * as Turn from "./turn";
 import "./roles";
 
 const canDefend =
-	Turn.mySupply + 1 >= Turn.enemyScouts.length * memory.enemySize * Turn.enemyShapePower;
+	Turn.mySupply + 2 >= Turn.enemyScouts.length * memory.enemySize * Turn.enemyShapePower;
 const enemiesArriving =
 	Turn.enemyUnits.filter((e) => Utils.inRange(e, base, 900)).length >=
 	Turn.enemyUnits.length / 2;
@@ -47,7 +47,7 @@ export function useEnergize(s: Spirit): void {
 	// Attack just enough to guarantee enemy base's energy goes below 0 on next tick
 	if (Utils.inRange(s, enemy_base)) {
 		const canEnergize =
-			(Turn.refuelAtCenter && s !== Turn.nearestScout) ||
+			(Turn.refuelAtCenter && s !== Turn.nearestAlly) ||
 			canWinGame ||
 			memory.strategy == "all-in";
 		const notOverkill = enemy_base.energy + Turn.enemyBaseDefense >= 0;
@@ -68,6 +68,9 @@ export function useEnergize(s: Spirit): void {
 	// Need to retain some energy on spirit for combat efficiency
 	if (Utils.inRange(s, outpost)) {
 		if (Turn.isAttacking) {
+			// Always energize the outpost if hostile or very low
+			if (Turn.enemyOutpost || outpost.energy < 25) return energize(s, outpost);
+
 			const starHasEnergy = memory.centerStar.energy > Turn.myCapacity - Turn.myEnergy;
 			const nearEmpower = outpost.energy > 450 && outpost.energy < 550;
 			const shouldEnergize =
@@ -80,9 +83,9 @@ export function useEnergize(s: Spirit): void {
 				return energize(s, outpost);
 			}
 		} else {
-			// Energize outpost if low or controlled by enemy
 			const outpostLow = outpost.energy < Math.max(25, Turn.outpostEnemyPower);
 			if (Turn.enemyOutpost || (outpostLow && energyRatio > 0.5)) {
+				// Energize outpost if low or controlled by enemy
 				return energize(s, outpost);
 			}
 		}
@@ -95,8 +98,9 @@ export function useEnergize(s: Spirit): void {
 	let workerRoles: MarkState[] = ["haul", "relay"];
 	if (Turn.refuelAtCenter) workerRoles.push("idle");
 
-	let combatRoles: MarkState[] = ["scout", "defend", "attack"];
+	let combatRoles: MarkState[] = ["scout", "attack"];
 	if (Turn.enemyAllIn || memory.strategy === "rally") combatRoles.push("refuel");
+	if (!Turn.isAttacking) combatRoles.push("defend");
 
 	// Allies that could benefit from an equalizing energy transfer
 	let lowAllies = allyTargets.filter((t) => {
@@ -106,9 +110,9 @@ export function useEnergize(s: Spirit): void {
 	});
 
 	if (canHarvestNearest && !workerRoles.includes(s.mark)) {
-		// Non-worker units at stars can also boost up allies of equal health
+		// Non-worker units at stars can boost up any allies with less energy
 		lowAllies = allyTargets.filter(
-			(t) => !Utils.inRange(t, nearestStar) && Utils.energyRatio(t) <= energyRatio
+			(t) => !Utils.inRange(t, nearestStar) && Utils.energyRatio(t) < energyRatio
 		);
 	}
 
