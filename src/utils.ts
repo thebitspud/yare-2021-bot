@@ -77,7 +77,7 @@ export function lerp(
 	return [from[0] * (1 - bias) + to[0] * bias, from[1] * (1 - bias) + to[1] * bias];
 }
 
-/** Returns the balancing point between the given positions */
+/** Returns the balancing point between all the given positions */
 export function midpoint(...entries: (Position | Entity)[]): Position {
 	if (!entries.length) return memory.centerStar.position;
 	return multiply(add(...entries), 1 / entries.length);

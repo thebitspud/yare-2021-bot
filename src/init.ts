@@ -31,6 +31,7 @@ if (memory.init !== BOT_VERSION) {
 		centerToBase: Utils.nextPosition(memory.centerStar, base),
 		centerToOutpost: Utils.nextPosition(memory.centerStar, outpost),
 		outpostAntipode: Utils.nextPosition(memory.centerStar, outpost, -198),
+		enemyBaseAntipode: Utils.nextPosition(enemy_base, memory.enemyStar, -398),
 	};
 }
 
@@ -39,11 +40,10 @@ export const settings = {
 	allInSupply: 51,
 	doRetakes: true,
 	retakeSupply: 51,
-	retakeWorkers: 10,
-	attackGroupSize: 0.75, // float in [0, 1]
+	attackGroupSize: 0.7, // float in [0, 1]
 	haulRelayRatio: 2.6,
-	maxMergeSize: 3, // 1 to never merge
-	allInGuards: 3,
+	maxMergeSize: 4, // 1 to never merge
+	attackGuards: 3,
 	minScouts: 1,
 	extraScouts: true,
 };

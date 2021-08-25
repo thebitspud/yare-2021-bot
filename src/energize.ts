@@ -3,7 +3,8 @@ import * as Turn from "./turn";
 import "./roles";
 
 const canDefend =
-	Turn.mySupply + 2 >= Turn.enemyScouts.length * memory.enemySize * Turn.enemyShapePower;
+	Turn.mySupply + (Turn.vsSquares ? 2 : 0) >=
+	Turn.enemyScouts.length * memory.enemySize * Turn.enemyShapePower;
 const enemiesArriving =
 	Turn.enemyUnits.filter((e) => Utils.inRange(e, base, 900)).length >=
 	Turn.enemyUnits.length / 2;
@@ -37,7 +38,7 @@ export function useEnergize(s: Spirit): void {
 
 	const energizePower = Math.min(s.size, s.energy);
 
-	// Always attack enemies in range, using an algorithm optimized to maximize kill count
+	// Always attack enemies in range
 	if (enemyTargets.length) {
 		const killable = enemyTargets.filter((t) => t.energy < energizePower * 2);
 		if (killable.length) return energize(s, Utils.highestEnergy(killable));
@@ -47,7 +48,7 @@ export function useEnergize(s: Spirit): void {
 	// Attack just enough to guarantee enemy base's energy goes below 0 on next tick
 	if (Utils.inRange(s, enemy_base)) {
 		const canEnergize =
-			(Turn.refuelAtCenter && s !== Turn.nearestAlly) ||
+			(Turn.refuelAtCenter && s !== Turn.blockerScout) ||
 			canWinGame ||
 			memory.strategy == "all-in";
 		const notOverkill = enemy_base.energy + Turn.enemyBaseDefense >= 0;
@@ -108,13 +109,6 @@ export function useEnergize(s: Spirit): void {
 		const allyTransferEnergy = (t.energy + energizePower) / t.energy_capacity;
 		return allyTransferEnergy <= transferEnergy;
 	});
-
-	if (canHarvestNearest && !workerRoles.includes(s.mark)) {
-		// Non-worker units at stars can boost up any allies with less energy
-		lowAllies = allyTargets.filter(
-			(t) => !Utils.inRange(t, nearestStar) && Utils.energyRatio(t) < energyRatio
-		);
-	}
 
 	if (allyTargets.length) {
 		// Energize allies in danger if not against squares

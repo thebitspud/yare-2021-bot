@@ -38,7 +38,8 @@ export function update(): void {
 
 /** Removes units from over-saturated roles and sets them to idle */
 function removeExtras() {
-	let refuelable: MarkState[] = ["defend", "attack", "scout"];
+	let refuelable: MarkState[] = ["defend", "scout"];
+	if (memory.strategy !== "rally") refuelable.push("attack");
 	if (!Turn.refuelAtCenter) refuelable.push("idle");
 
 	// REFUEL
@@ -55,7 +56,7 @@ function removeExtras() {
 
 		// Scouts may attempt to refuel at a higher cutoff
 		// Except the first one which should always be attempting to block
-		if (s.mark === "scout" && s !== Turn.nearestAlly) {
+		if (s.mark === "scout" && s !== Turn.blockerScout) {
 			if (energyRatio < 0.5 && memory.centerStar.energy > 0) {
 				setRole(s, "refuel");
 				continue;
@@ -63,11 +64,12 @@ function removeExtras() {
 		}
 
 		// Defenders can refuel if there are no potential invaders
-		if (s.mark === "defend" && energyRatio < 1 && !Turn.invaders.far.length) {
+		if (s.mark === "defend" && energyRatio < 1 && !Turn.invaders.med.length) {
 			setRole(s, "refuel");
 			continue;
 		}
 
+		// Reset full energy refueling units to idle
 		if (energyRatio >= 0.9 && s.mark === "refuel") setRole(s, "idle");
 	}
 
@@ -88,7 +90,7 @@ function removeExtras() {
 
 	// WORKERS
 	// Should generally avoid shuffling around worker roles
-	if ([...register.relay, ...register.haul].length > Math.max(Turn.maxWorkers, 0) + 1) {
+	if ([...register.relay, ...register.haul].length > Math.max(Turn.maxWorkers, 0)) {
 		const removeHauler = register.haul.length - 1 >= register.relay.length * workerRatio;
 		const list = removeHauler ? register.haul : register.relay;
 		if (list.length) setRole(Utils.nearest(memory.myStar, list), "idle");
@@ -103,14 +105,8 @@ function assignRoles() {
 			// When attacking, only other valid roles are defend and refuel
 			const canBeAttacker =
 				!["defend", "refuel"].includes(s.mark) &&
-				(s !== Turn.nearestAlly || memory.strategy === "all-in");
+				(s !== Turn.blockerScout || memory.strategy === "all-in");
 			if (canBeAttacker) setRole(s, "attack");
-
-			const retakeUnitReq =
-				register.attack.length + register.refuel.length >=
-				settings.retakeSupply - settings.retakeWorkers - Turn.idealDefenders - 1;
-			// Can break out early if only retaking and sufficient units
-			if (memory.retakeActive && retakeUnitReq) break;
 		}
 	}
 
@@ -119,7 +115,7 @@ function assignRoles() {
 		// Try to fill with idle units first
 		const validIdle = register.idle.filter((s) => Utils.energyRatio(s) > 0.5);
 		if (validIdle.length) {
-			setRole(Utils.nearest(Turn.nearestEnemy, validIdle), "defend");
+			setRole(Utils.nearest(Turn.targetEnemy, validIdle), "defend");
 			continue;
 		}
 
@@ -128,7 +124,7 @@ function assignRoles() {
 			(s) => Utils.energyRatio(s) > 0.5
 		);
 		if (validWorkers.length) {
-			setRole(Utils.nearest(Turn.nearestEnemy, validWorkers), "defend");
+			setRole(Utils.nearest(Turn.targetEnemy, validWorkers), "defend");
 			continue;
 		}
 
@@ -140,7 +136,7 @@ function assignRoles() {
 				s.size === memory.mySize
 		);
 		if (validAttackers.length) {
-			setRole(Utils.nearest(Turn.nearestEnemy, validAttackers), "defend");
+			setRole(Utils.nearest(Turn.targetEnemy, validAttackers), "defend");
 		} else break; // If cannot fill, break to prevent infinite loop
 	}
 
@@ -154,12 +150,13 @@ function assignRoles() {
 			Turn.enemyUnits.length / 2;
 
 		if (mustDefend) {
+			const refuelCutoff = Turn.vsSquares ? 0.5 : Turn.vsTriangles ? 0.7 : 0.9;
 			for (const s of Turn.myUnits) {
 				if (!["defend", "refuel", "attack"].includes(s.mark)) {
-					setRole(s, Utils.energyRatio(s) < 0.5 ? "refuel" : "defend");
+					setRole(s, Utils.energyRatio(s) < refuelCutoff ? "refuel" : "defend");
 				}
 
-				if (mustGroup && s.mark === "refuel" && Utils.energyRatio(s) > 0.5) {
+				if (mustGroup && s.mark === "refuel" && Utils.energyRatio(s) > refuelCutoff) {
 					setRole(s, "defend");
 				}
 			}
