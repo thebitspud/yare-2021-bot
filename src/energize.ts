@@ -8,11 +8,16 @@ const canDefend =
 const enemiesArriving =
 	Turn.enemyUnits.filter((e) => Utils.inRange(e, base, 900)).length >=
 	Turn.enemyUnits.length / 2;
-const enemyBasePower = Turn.myUnits
+const winPower = Turn.myUnits
 	.filter((s) => Utils.inRange(s, enemy_base, 300))
-	.map((s) => Math.min(s.size, s.energy) * 2)
+	.map((s) => s.energy)
 	.reduce((acc, n) => acc + n, 0);
-const canWinGame = enemyBasePower >= enemy_base.energy / 2 + Turn.enemyBaseDefense;
+const outpostEnergizeThreat = Turn.enemyUnits
+	.filter((s) => Utils.inRange(s, outpost))
+	.map((s) => s.energy)
+	.reduce((acc, n) => acc + n, 0);
+const canWinGame =
+	winPower * 2 >= enemy_base.energy + Turn.enemyBaseDefense * enemy_base.hp;
 
 // When being all-inned by squares, assume they will always attack a target no matter what
 if (Turn.enemyAllIn && enemy_base.shape === "squares") {
@@ -69,15 +74,23 @@ export function useEnergize(s: Spirit): void {
 	// Need to retain some energy on spirit for combat efficiency
 	if (Utils.inRange(s, outpost)) {
 		if (Turn.isAttacking) {
-			// Always energize the outpost if hostile or very low
-			if (Turn.enemyOutpost || outpost.energy < 25) return energize(s, outpost);
+			// Always energize the outpost if hostile or low
+			if (Turn.enemyOutpost) {
+				if (outpost.energy > -outpostEnergizeThreat) {
+					return energize(s, outpost);
+				}
+			} else {
+				if (outpost.energy <= Math.min(10, outpostEnergizeThreat * 2))
+					return energize(s, outpost);
+			}
 
 			const starHasEnergy = memory.centerStar.energy > Turn.myCapacity - Turn.myEnergy;
-			const nearEmpower = outpost.energy > 450 && outpost.energy < 550;
+			const nearEmpower = outpost.energy > 400 && outpost.energy < 600;
 			const shouldEnergize =
 				(memory.centerStar.energy / 2 > outpost.energy || nearEmpower) &&
 				Utils.inRange(s, memory.centerStar);
-			const readyToEnergize = memory.strategy !== "all-in" && energyRatio > 0.5;
+			const readyToEnergize =
+				memory.strategy !== "all-in" && (energyRatio > 0.5 || outpost.energy <= 1);
 
 			// Energize outpost if attacking through center and conditions met
 			if (starHasEnergy && shouldEnergize && readyToEnergize) {
@@ -85,7 +98,8 @@ export function useEnergize(s: Spirit): void {
 			}
 		} else {
 			const outpostLow = outpost.energy < Math.max(25, Turn.outpostEnemyPower);
-			if (Turn.enemyOutpost || (outpostLow && energyRatio > 0.5)) {
+			const enoughEnergy = (outpostLow && energyRatio > 0.5) || outpost.energy <= 1;
+			if (Turn.enemyOutpost || enoughEnergy) {
 				// Energize outpost if low or controlled by enemy
 				return energize(s, outpost);
 			}
@@ -99,16 +113,41 @@ export function useEnergize(s: Spirit): void {
 	let workerRoles: MarkState[] = ["haul", "relay"];
 	if (Turn.refuelAtCenter) workerRoles.push("idle");
 
-	let combatRoles: MarkState[] = ["scout", "attack"];
+	let combatRoles: MarkState[] = ["scout", "attack", "defend"];
 	if (Turn.enemyAllIn || memory.strategy === "rally") combatRoles.push("refuel");
-	if (!Turn.isAttacking) combatRoles.push("defend");
 
 	// Allies that could benefit from an equalizing energy transfer
-	let lowAllies = allyTargets.filter((t) => {
-		const transferEnergy = (s.energy - energizePower) / s.energy_capacity;
-		const allyTransferEnergy = (t.energy + energizePower) / t.energy_capacity;
-		return allyTransferEnergy <= transferEnergy;
-	});
+	let lowAllies;
+
+	// Checking if the nearest star is a valid refueling location
+	let starList: Star[] = [Turn.rallyStar];
+	if (Turn.refuelAtCenter) starList.push(memory.centerStar);
+	if (Utils.inRange(s, memory.enemyStar, 600)) starList.push(memory.enemyStar);
+	const bestStar = Utils.nearest(s, starList);
+
+	if (bestStar === nearestStar && canHarvestNearest && !workerRoles.includes(s.mark)) {
+		// Non-worker units at stars can boost up allies with less energy
+		lowAllies = allyTargets.filter(
+			(t) =>
+				!Utils.inRange(t, nearestStar) &&
+				Utils.energyRatio(t) <= energyRatio &&
+				!workerRoles.includes(t.mark)
+		);
+
+		// Any non-worker unit energizing allies from star should have the refuel mark
+		if (s.mark !== "refuel" && lowAllies.length) {
+			s.set_mark("refuel");
+		}
+	} else {
+		lowAllies = allyTargets.filter((t) => {
+			const transferEnergy = (s.energy - energizePower) / s.energy_capacity;
+			const allyTransferEnergy = (t.energy + energizePower) / t.energy_capacity;
+			return allyTransferEnergy <= transferEnergy;
+		});
+	}
+
+	if (lowAllies) {
+	}
 
 	if (allyTargets.length) {
 		// Energize allies in danger if not against squares

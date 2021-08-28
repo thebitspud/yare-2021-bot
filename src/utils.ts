@@ -172,7 +172,7 @@ export function highestEnergy<T extends Entity>(list: T[]): T {
 
 /** Returns the energy the given star will generate on the next tick */
 export function energyPerTick(star: Star): number {
-	return Math.round(3 + star.energy / 100);
+	return Math.round(2 + star.energy / 50);
 }
 
 /** Returns the given entity's energy/capacity ratio */

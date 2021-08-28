@@ -16,6 +16,7 @@ if (memory.init !== BOT_VERSION) {
 		strategy: "economic",
 		refuelCenter: false,
 		retakeActive: false,
+		forceGroup: false,
 		myStar: Utils.nearest(base, Object.values(stars)),
 		enemyStar: Utils.nearest(enemy_base, Object.values(stars)),
 		mySize: my_spirits[0].size,
@@ -36,14 +37,14 @@ if (memory.init !== BOT_VERSION) {
 }
 
 export const settings = {
-	debug: false,
+	debug: true,
 	allInSupply: 51,
 	doRetakes: true,
-	retakeSupply: 51,
+	retakeSupply: 51, // should be <= allInSupply
 	attackGroupSize: 0.7, // float in [0, 1]
 	haulRelayRatio: 2.6,
-	maxMergeSize: 4, // 1 to never merge
+	maxMergeSize: 1, // 1 to never merge
 	attackGuards: 3,
 	minScouts: 1,
-	extraScouts: true,
+	extraScouts: false,
 };
