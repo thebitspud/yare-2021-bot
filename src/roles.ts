@@ -36,6 +36,11 @@ export function update(): void {
 	optimizeWorkers();
 }
 
+const groupDist = Utils.dist(
+	Turn.rallyStar,
+	Utils.midpoint(...register.attack, ...register.refuel)
+);
+
 /** Removes units from over-saturated roles and sets them to idle */
 function removeExtras() {
 	let refuelable: MarkState[] = ["defend", "scout", "attack"];
@@ -72,8 +77,10 @@ function removeExtras() {
 
 		// Reset full energy refueling units to idle
 		if (s.mark === "refuel") {
-			if (Turn.isAttacking && memory.forceGroup) setRole(s, "attack");
-			else if (energyRatio >= 1) setRole(s, "idle");
+			const groupEarly = memory.forceGroup || (energyRatio >= 0.8 && groupDist > 400);
+			if (Turn.isAttacking && groupEarly) {
+				setRole(s, "attack");
+			} else if (energyRatio === 1) setRole(s, "idle");
 		}
 	}
 
@@ -101,6 +108,13 @@ function removeExtras() {
 	}
 }
 
+const mustDefend = Turn.invaders.far.length >= Turn.enemyUnits.length / 2;
+const mustGroup =
+	Turn.enemyUnits.filter(
+		(e) => Utils.inRange(e, base, 750) || Utils.inRange(e, memory.myStar, 650)
+	).length >=
+	Turn.enemyUnits.length / 2;
+
 function assignRoles() {
 	// ATTACKERS
 	// Turn.isAttacking is delayed by 1 turn so I'm using this instead
@@ -109,7 +123,7 @@ function assignRoles() {
 			// When attacking, only other valid roles are defend and refuel
 			const canBeAttacker =
 				!["defend", "attack", "refuel"].includes(s.mark) &&
-				(s !== Turn.blockerScout || !memory.retakeActive);
+				(s !== Turn.blockerScout || !memory.retakeActive || Turn.allyOutpost);
 			const shouldRefuel = memory.strategy === "rally" && Utils.energyRatio(s) < 1;
 			if (canBeAttacker) setRole(s, shouldRefuel ? "refuel" : "attack");
 		}
@@ -133,47 +147,41 @@ function assignRoles() {
 			continue;
 		}
 
-		// Otherwise, can fill with attackers/scouts if necessary
-		const validAttackers = [...register.attack, ...register.scout].filter(
-			(s) =>
+		// Otherwise, can fill with combat units if necessary
+		const combatUnits = [...register.attack, ...register.scout, ...register.refuel];
+		const validCombat = combatUnits.filter((s) => {
+			return (
 				Utils.energyRatio(s) > 0.5 &&
-				Utils.inRange(base, s, 800) &&
+				(Turn.invaders.far.length || Utils.energyRatio(s) === 1) &&
+				Utils.inRange(base, s, 900) &&
 				s.size === memory.mySize
-		);
-		if (validAttackers.length) {
-			setRole(Utils.nearest(Turn.targetEnemy, validAttackers), "defend");
+			);
+		});
+		if (validCombat.length) {
+			setRole(Utils.nearest(Turn.targetEnemy, validCombat), "defend");
 		} else break; // If cannot fill, break to prevent infinite loop
 	}
 
 	// Case handler for preparing to defend when being all-inned
-	if (Turn.enemyAllIn) {
-		const mustDefend = Turn.invaders.far.length >= Turn.enemyUnits.length / 2;
-		const mustGroup =
-			Turn.enemyUnits.filter(
-				(e) => Utils.inRange(e, base, 750) || Utils.inRange(e, memory.myStar, 650)
-			).length >=
-			Turn.enemyUnits.length / 2;
+	if (Turn.enemyAllIn && mustDefend) {
+		const refuelCutoff = Turn.vsSquares ? 0.5 : 0.7;
+		const excludedRoles: MarkState[] = ["defend", "refuel"];
 
-		if (mustDefend) {
-			const refuelCutoff = Turn.vsSquares ? 0.5 : 0.7;
-			const excludedRoles: MarkState[] = ["defend", "refuel"];
+		if (Turn.isAttacking) {
+			const allyDist = Utils.dist(Utils.midpoint(...Turn.myUnits), enemy_base);
+			const enemyDist = Utils.dist(Utils.midpoint(...Turn.enemyUnits), base);
+			if (allyDist + (Turn.vsSquares ? 300 : 100) < enemyDist) {
+				excludedRoles.push("attack");
+			}
+		}
 
-			if (Turn.isAttacking) {
-				const allyDist = Utils.dist(Utils.midpoint(...Turn.myUnits), enemy_base);
-				const enemyDist = Utils.dist(Utils.midpoint(...Turn.enemyUnits), base);
-				if (allyDist + (Turn.vsSquares ? 400 : 100) < enemyDist) {
-					excludedRoles.push("attack");
-				}
+		for (const s of Turn.myUnits) {
+			if (!excludedRoles.includes(s.mark) && !Utils.inRange(s, enemy_base, 400)) {
+				setRole(s, Utils.energyRatio(s) < refuelCutoff ? "refuel" : "defend");
 			}
 
-			for (const s of Turn.myUnits) {
-				if (!excludedRoles.includes(s.mark) && !Utils.inRange(s, enemy_base, 400)) {
-					setRole(s, Utils.energyRatio(s) < refuelCutoff ? "refuel" : "defend");
-				}
-
-				if (mustGroup && s.mark === "refuel" && Utils.energyRatio(s) > refuelCutoff) {
-					setRole(s, "defend");
-				}
+			if (mustGroup && s.mark === "refuel" && Utils.energyRatio(s) > refuelCutoff) {
+				setRole(s, "defend");
 			}
 		}
 	}

@@ -112,6 +112,7 @@ export const refuelAtCenter = canRefuelCenter();
 export const maxWorkers = getMaxWorkers();
 export let idealDefenders = getIdealDefenders();
 export let idealScouts = getIdealScouts();
+if (tick > 50 && !enemyOutpost) idealScouts++;
 
 const powerRatio = myEnergy / (enemyEnergy * enemyShapePower);
 const shouldRetake = shouldRetakeOutpost() && mySupply >= settings.retakeSupply;
@@ -139,17 +140,19 @@ export const rallyStar = memory.refuelCenter ? memory.centerStar : memory.myStar
 export let rallyPosition = memory.loci.centerToOutpost;
 if (enemyOutpost) {
 	// Keep rally position outside of outpost if it is hostile
-	const range = outpost.energy > 350 ? 625 : 450;
+	const range = outpost.energy > 350 ? 650 : 450;
 	const towards = memory.retakeActive
 		? Utils.lerp(memory.myStar, base)
 		: memory.loci.outpostAntipode;
 	rallyPosition = Utils.nextPosition(outpost, towards, range);
 }
 
+export let doConverge = false;
+
 // Determining whether the bot is ready to attack
 if (memory.strategy === "rally") {
-	const attackers = myUnits.filter((s) => s.mark === "attack");
-	if (attackers.length) {
+	const attackers = myUnits.filter((s) => ["attack", "refuel"].includes(s.mark));
+	if (attackers.length && rallyPosition !== memory.loci.centerToOutpost) {
 		rallyPosition = Utils.lerp(rallyPosition, Utils.midpoint(...attackers));
 	}
 
@@ -162,7 +165,7 @@ if (memory.strategy === "rally") {
 		attackSupply += s.size;
 		attackEnergy += s.energy;
 		attackCapacity += s.energy_capacity;
-		if (Utils.inRange(s, rallyPosition, 50)) {
+		if (Utils.inRange(s, rallyPosition, 25)) {
 			groupedSupply += s.size;
 		}
 	}
@@ -181,9 +184,12 @@ if (memory.strategy === "rally") {
 	const groupReq = groupedSupply >= attackSupply * settings.attackGroupSize;
 	const starReq = attackEnergy / attackCapacity >= 0.9 || rallyStar.energy < mySupply;
 
-	// Waiting until units are grouped and have sufficient energy before attacking
+	// Waiting until units are grouped and ready before issuing the final attack order
 	if (starReq && groupReq) {
 		memory.strategy = memory.retakeActive ? "retake" : "all-in";
+		// Do one final grouping action when ready
+		rallyPosition = Utils.midpoint(...attackers);
+		doConverge = true;
 	}
 }
 

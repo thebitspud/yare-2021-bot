@@ -26,6 +26,23 @@ if (Turn.enemyAllIn && enemy_base.shape === "squares") {
 	}
 }
 
+const combatEnemies = Turn.enemyUnits.filter((e) => e.sight.enemies_beamable.length);
+// Accounting for enemy support energizing
+for (const e of Turn.enemyUnits) {
+	// Don't do calculation on combat units
+	if (e.sight.enemies_beamable.length) continue;
+
+	// Ignore if unit has no combat units in range
+	const combatInRange = e.sight.friends_beamable
+		.map((t) => spirits[t])
+		.filter((t) => combatEnemies.includes(t));
+	if (!combatInRange.length) continue;
+
+	// Cannot predict energizes, so assume equal distribution of energy
+	const power = Math.min(e.size, e.energy) / combatInRange.length;
+	for (let t of combatInRange) t.energy += power;
+}
+
 /** Attempts to select an optimal energize target for the given spirit */
 export function useEnergize(s: Spirit): void {
 	const nearestStar = Utils.nearest(s, Object.values(stars));

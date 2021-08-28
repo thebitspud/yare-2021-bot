@@ -29,7 +29,7 @@ if (Turn.enemyAllIn) {
 		defenderRally = Utils.nextPosition(
 			starSide ? memory.myStar : base,
 			Utils.lerp(defendMidpoint, Turn.targetEnemy),
-			225
+			210
 		);
 	} else {
 		// Move to intercept the target enemy
@@ -130,16 +130,16 @@ export function findMove(s: Spirit): void {
 	// Role specific movement commands
 	switch (s.mark) {
 		case "attack":
-			if (memory.strategy === "all-in") {
+			if (memory.strategy === "rally" || Turn.doConverge) {
+				// If rallying, move to attacker rally position
+				return safeMove(s, Turn.rallyPosition);
+			} else if (memory.strategy === "all-in") {
 				// If all-in, move towards enemy base
 				return safeMove(s, Utils.nextPosition(enemy_base, s));
-			} else if (memory.strategy === "retake") {
+			} else {
 				// If retaking, move to outpost
 				if (Utils.inRange(s, outpost)) return s.move(loci.centerToOutpost);
 				else return s.move(Utils.nextPosition(outpost, s));
-			} else {
-				// If rallying, move to attacker rally position
-				return safeMove(s, Turn.rallyPosition);
 			}
 		case "defend":
 			// Wait to intercept at the computed defender rally point
@@ -203,8 +203,11 @@ export function findMove(s: Spirit): void {
 			if (bestStar === memory.centerStar) {
 				// Face away from outpost if hostile, and towards if friendly
 				if (Turn.enemyOutpost) towards = loci.outpostAntipode;
+				else if (memory.strategy === "all-in")
+					if (Turn.doConverge) return s.move(Turn.rallyPosition);
+					else towards = enemy_base;
 				else if (Turn.enemyAllIn) towards = defenderRally;
-				else if (memory.strategy === "rally") towards = Turn.rallyPosition;
+				else if (memory.strategy === "rally") return s.move(Turn.rallyPosition);
 				else towards = Utils.inRange(s, bestStar) ? loci.centerToOutpost : s;
 			} else {
 				if (Turn.enemyAllIn || memory.strategy === "economic") {
