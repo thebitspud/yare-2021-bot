@@ -29,7 +29,7 @@ if (Turn.enemyAllIn) {
 		defenderRally = Utils.nextPosition(
 			starSide ? memory.myStar : base,
 			Utils.lerp(defendMidpoint, Turn.targetEnemy),
-			210
+			220
 		);
 	} else {
 		// Move to intercept the target enemy
@@ -132,7 +132,7 @@ export function findMove(s: Spirit): void {
 		case "attack":
 			if (memory.strategy === "rally" || Turn.doConverge) {
 				// If rallying, move to attacker rally position
-				return safeMove(s, Turn.rallyPosition);
+				return safeMove(s, Turn.rallyPoint);
 			} else if (memory.strategy === "all-in") {
 				// If all-in, move towards enemy base
 				return safeMove(s, Utils.nextPosition(enemy_base, s));
@@ -149,10 +149,10 @@ export function findMove(s: Spirit): void {
 				// Pressure enemy base from opposite direction of star
 				if (allyPower > enemyBasePower + enemy_base.energy / 2) {
 					// If can deal HP damage, attack enemy base
-					return safeMove(s, Utils.nextPosition(enemy_base, s), 602);
+					return safeMove(s, Utils.nextPosition(enemy_base, s), 601);
 				} else {
 					// Otherwise, attempt to block enemy production
-					return safeMove(s, loci.enemyBaseAntipode, 602);
+					return safeMove(s, loci.enemyBaseAntipode, 601);
 				}
 			} else {
 				const outpostLow = outpost.energy < Math.max(25, Turn.outpostEnemyPower);
@@ -172,7 +172,7 @@ export function findMove(s: Spirit): void {
 						return s.move(Utils.nextPosition(enemy_base, s));
 					} else {
 						// Otherwise, attempt to block enemy production from within outpost range
-						return s.move(Utils.nextPosition(enemy_base, outpost, 400));
+						return s.move(Utils.nextPosition(enemy_base, outpost, 399));
 					}
 				}
 			}
@@ -204,16 +204,17 @@ export function findMove(s: Spirit): void {
 				// Face away from outpost if hostile, and towards if friendly
 				if (Turn.enemyOutpost) towards = loci.outpostAntipode;
 				else if (memory.strategy === "all-in")
-					if (Turn.doConverge) return s.move(Turn.rallyPosition);
+					if (Turn.doConverge) return s.move(Turn.rallyPoint);
 					else towards = enemy_base;
 				else if (Turn.enemyAllIn) towards = defenderRally;
-				else if (memory.strategy === "rally") return s.move(Turn.rallyPosition);
+				else if (["rally", "retake"].includes(memory.strategy))
+					return s.move(Turn.rallyPoint);
 				else towards = Utils.inRange(s, bestStar) ? loci.centerToOutpost : s;
 			} else {
 				if (Turn.enemyAllIn || memory.strategy === "economic") {
 					// Face towards defender rally if not attacking
 					towards = defenderRally;
-				} else towards = Utils.inRange(s, bestStar) ? Turn.rallyPosition : s;
+				} else towards = Utils.inRange(s, bestStar) ? Turn.rallyPoint : s;
 			}
 
 			// Move to refuel and reset at nearest safe star
@@ -232,7 +233,7 @@ export function findMove(s: Spirit): void {
 					return safeMove(s, bestNext);
 				}
 			} else {
-				// Else just wait for an assignment at the default idle position
+				// Else just wait for an assignment at the default defender rally point
 				return safeMove(s, Utils.lerp(base, defenderRally, 0.7));
 			}
 	}

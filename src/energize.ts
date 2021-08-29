@@ -92,29 +92,23 @@ export function useEnergize(s: Spirit): void {
 	if (Utils.inRange(s, outpost)) {
 		if (Turn.isAttacking) {
 			// Always energize the outpost if hostile or low
-			if (Turn.enemyOutpost) {
-				if (outpost.energy > -outpostEnergizeThreat) {
-					return energize(s, outpost);
-				}
-			} else {
-				if (outpost.energy <= Math.min(10, outpostEnergizeThreat * 2))
-					return energize(s, outpost);
-			}
+			if (Turn.enemyOutpost && outpost.energy > -outpostEnergizeThreat)
+				return energize(s, outpost);
 
-			const starHasEnergy = memory.centerStar.energy > Turn.myCapacity - Turn.myEnergy;
-			const nearEmpower = outpost.energy > 400 && outpost.energy < 600;
-			const shouldEnergize =
-				(memory.centerStar.energy / 2 > outpost.energy || nearEmpower) &&
-				Utils.inRange(s, memory.centerStar);
 			const readyToEnergize =
-				memory.strategy !== "all-in" && (energyRatio > 0.5 || outpost.energy <= 1);
+				(memory.strategy !== "all-in" && energyRatio > 0.5) || outpost.energy <= 1;
+			const outpostAtRisk = outpost.energy < Math.min(10, outpostEnergizeThreat * 2 + 1);
+			const starHasEnergy = memory.centerStar.energy >= Turn.myCapacity - Turn.myEnergy;
+			const shouldEnergize =
+				memory.centerStar.energy / 2 >= outpost.energy ||
+				(outpost.energy > 400 && outpost.energy < 600);
 
 			// Energize outpost if attacking through center and conditions met
-			if (starHasEnergy && shouldEnergize && readyToEnergize) {
+			if (readyToEnergize && (outpostAtRisk || (starHasEnergy && shouldEnergize))) {
 				return energize(s, outpost);
 			}
 		} else {
-			const outpostLow = outpost.energy < Math.max(25, Turn.outpostEnemyPower);
+			const outpostLow = outpost.energy < Math.max(20, Turn.outpostEnemyPower);
 			const enoughEnergy = (outpostLow && energyRatio > 0.5) || outpost.energy <= 1;
 			if (Turn.enemyOutpost || enoughEnergy) {
 				// Energize outpost if low or controlled by enemy
@@ -133,14 +127,14 @@ export function useEnergize(s: Spirit): void {
 	let combatRoles: MarkState[] = ["scout", "attack", "defend"];
 	if (Turn.enemyAllIn || memory.strategy === "rally") combatRoles.push("refuel");
 
-	// Allies that could benefit from an equalizing energy transfer
-	let lowAllies;
-
 	// Checking if the nearest star is a valid refueling location
 	let starList: Star[] = [Turn.rallyStar];
 	if (Turn.refuelAtCenter) starList.push(memory.centerStar);
 	if (Utils.inRange(s, memory.enemyStar, 600)) starList.push(memory.enemyStar);
 	const bestStar = Utils.nearest(s, starList);
+
+	// Allies that could benefit from an equalizing energy transfer
+	let lowAllies;
 
 	if (bestStar === nearestStar && canHarvestNearest && !workerRoles.includes(s.mark)) {
 		// Non-worker units at stars can boost up allies with less energy

@@ -31,8 +31,8 @@ if (memory.init !== BOT_VERSION) {
 		starToBase: Utils.nextPosition(memory.myStar, base),
 		centerToBase: Utils.nextPosition(memory.centerStar, base),
 		centerToOutpost: Utils.lerp(memory.centerStar, outpost),
-		outpostAntipode: Utils.nextPosition(memory.centerStar, outpost, -198),
-		enemyBaseAntipode: Utils.nextPosition(enemy_base, memory.enemyStar, -398),
+		outpostAntipode: Utils.nextPosition(memory.centerStar, outpost, -199),
+		enemyBaseAntipode: Utils.nextPosition(enemy_base, memory.enemyStar, -399),
 	};
 }
 

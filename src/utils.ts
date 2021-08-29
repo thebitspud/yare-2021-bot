@@ -93,11 +93,11 @@ export function midpoint(...entries: (Position | Entity)[]): Position {
 export function nextPosition(
 	tether: Position | Entity,
 	target: Position | Entity,
-	range = memory.config.energizeRange
+	range = memory.config.energizeRange - 1
 ): Position {
 	if ("position" in tether) tether = tether.position;
 	if ("position" in target) target = target.position;
-	return add(tether, normalize(vectorTo(tether, target), range - 1));
+	return add(tether, normalize(vectorTo(tether, target), range));
 }
 
 /**

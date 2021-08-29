@@ -51,7 +51,9 @@ function removeExtras() {
 	for (const s of Turn.myUnits) {
 		const energyRatio = Utils.energyRatio(s);
 		// Size 1 units can be more aggressive vs squares and triangles
-		const retreatThreshold = !Turn.vsCircles && s.size === 1 ? 0 : 0.2;
+		const lowThreshold =
+			(!Turn.vsCircles && s.size === 1) || Utils.inRange(s, enemy_base);
+		const retreatThreshold = lowThreshold ? 0 : 0.2;
 		// Non-worker units with low energy should always retreat and refuel
 		if (energyRatio <= retreatThreshold && refuelable.includes(s.mark)) {
 			setRole(s, "refuel");

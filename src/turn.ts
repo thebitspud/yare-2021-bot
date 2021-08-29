@@ -1,5 +1,6 @@
 import { BOT_VERSION, settings } from "./init";
 import * as Utils from "./utils";
+import { inRange } from "./utils";
 
 const enemy_spirits = Object.values(spirits).filter((s) => !my_spirits.includes(s));
 
@@ -112,13 +113,13 @@ export const refuelAtCenter = canRefuelCenter();
 export const maxWorkers = getMaxWorkers();
 export let idealDefenders = getIdealDefenders();
 export let idealScouts = getIdealScouts();
-if (tick > 50 && !enemyOutpost) idealScouts++;
+if (tick > (vsSquares ? 50 : 30) && !enemyOutpost) idealScouts++;
 
 const powerRatio = myEnergy / (enemyEnergy * enemyShapePower);
 const shouldRetake = shouldRetakeOutpost() && mySupply >= settings.retakeSupply;
 const shouldAllIn =
 	mySupply >= settings.allInSupply ||
-	myCapacity > enemy_base.energy / 2 + enemyCapacity * enemyShapePower * 2.5;
+	myCapacity > enemy_base.energy * 0.75 + enemyCapacity * enemyShapePower * 2.5;
 const readyToAttack = shouldRetake || shouldAllIn;
 if (isAttacking) updateAttackStatus();
 
@@ -137,23 +138,21 @@ if (memory.strategy === "rally") {
 }
 
 export const rallyStar = memory.refuelCenter ? memory.centerStar : memory.myStar;
-export let rallyPosition = memory.loci.centerToOutpost;
-if (enemyOutpost) {
-	// Keep rally position outside of outpost if it is hostile
-	const range = outpost.energy > 350 ? 650 : 450;
-	const towards = memory.retakeActive
+export let rallyPoint = enemyOutpost
+	? memory.retakeActive
 		? Utils.lerp(memory.myStar, base)
-		: memory.loci.outpostAntipode;
-	rallyPosition = Utils.nextPosition(outpost, towards, range);
-}
+		: memory.loci.outpostAntipode
+	: memory.loci.centerToOutpost;
+updateRallyPoint();
 
 export let doConverge = false;
 
 // Determining whether the bot is ready to attack
 if (memory.strategy === "rally") {
 	const attackers = myUnits.filter((s) => ["attack", "refuel"].includes(s.mark));
-	if (attackers.length && rallyPosition !== memory.loci.centerToOutpost) {
-		rallyPosition = Utils.lerp(rallyPosition, Utils.midpoint(...attackers));
+	if (attackers.length && enemyOutpost) {
+		rallyPoint = Utils.lerp(rallyPoint, Utils.midpoint(...attackers));
+		updateRallyPoint();
 	}
 
 	// Computing aggregate attacker stats
@@ -165,7 +164,7 @@ if (memory.strategy === "rally") {
 		attackSupply += s.size;
 		attackEnergy += s.energy;
 		attackCapacity += s.energy_capacity;
-		if (Utils.inRange(s, rallyPosition, 25)) {
+		if (Utils.inRange(s, rallyPoint, 25)) {
 			groupedSupply += s.size;
 		}
 	}
@@ -188,7 +187,7 @@ if (memory.strategy === "rally") {
 	if (starReq && groupReq) {
 		memory.strategy = memory.retakeActive ? "retake" : "all-in";
 		// Do one final grouping action when ready
-		rallyPosition = Utils.midpoint(...attackers);
+		rallyPoint = Utils.midpoint(...attackers);
 		doConverge = true;
 	}
 }
@@ -259,12 +258,12 @@ function shouldRetakeOutpost(): boolean {
 	if (!enemyOutpost) return false;
 	if (!settings.doRetakes) return false;
 
-	// Don't attempt retake if it has a high chance of failing
-	const enemyDefense = outpost.energy * 0.75 + enemyCapacity * enemyShapePower * 1.25;
+	// Don't attempt retake if it is likely to fail
+	const enemyDefense = 20 + outpost.energy / 2 + enemyCapacity * enemyShapePower;
 	if (myCapacity < enemyDefense) return false;
 
 	// Attempt retake if center star has enough energy to be worth contesting
-	return memory.centerStar.energy > 50 + enemyDefense / 3;
+	return memory.centerStar.energy > 25 + enemyDefense / 3;
 }
 
 /** Returns whether idle and refueling units can energize from the center star */
@@ -279,7 +278,13 @@ function canRefuelCenter(): boolean {
 	const centerThreat =
 		enemyShapePower *
 		enemyUnits
-			.filter((e) => Utils.inRange(e, memory.loci.outpostAntipode, 300))
+			.filter((e) => {
+				const checkPoint = Utils.nextPosition(memory.loci.outpostAntipode, base);
+				return (
+					Utils.inRange(e, memory.loci.outpostAntipode, 200) ||
+					Utils.inRange(e, checkPoint, 240)
+				);
+			})
 			.map((e) => e.energy)
 			.reduce((acc, n) => acc + n, 0);
 
@@ -289,17 +294,26 @@ function canRefuelCenter(): boolean {
 	return centerThreat <= energyThreshold;
 }
 
+/** Keep rallyPoint outside of hostile outpost */
+function updateRallyPoint() {
+	if (enemyOutpost) {
+		const range = outpost.energy >= 400 ? 620 : 420;
+		if (inRange(rallyPoint, outpost, range))
+			rallyPoint = Utils.nextPosition(outpost, rallyPoint, range);
+	}
+}
+
 /** Ends attacks or swaps objectives according to the game's macro state */
 function updateAttackStatus(): void {
 	if (memory.strategy === "all-in") {
+		const capacityRatio = myCapacity / (enemyCapacity * enemyShapePower);
 		// Retreat if bot can no longer win
-		if (powerRatio < 0.5 && myCapacity / (enemyCapacity * enemyShapePower) < 1)
-			return retreat();
+		if (powerRatio < 0.5 && capacityRatio < 1) return retreat();
 	} else if (memory.strategy === "retake") {
 		// End retake if outpost has been secured
 		if (allyOutpost && outpost.energy > memory.centerStar.energy / 2) return endRetake();
 		// Retreat if enemy can locally overwhelm friendly units
-		if (enemyRetakePower * enemyShapePower > myEnergy) return retreat();
+		if (enemyRetakePower * enemyShapePower * 0.75 > myEnergy) return retreat();
 	}
 }
 
@@ -314,9 +328,10 @@ function retreat(): void {
 /** Finish the outpost retake and attacking if friendly units still have advantage */
 function endRetake(): void {
 	const powerReq =
-		myCapacity > enemy_base.energy / 2 + enemyCapacity * enemyShapePower * 1.25;
-	const starReq = memory.centerStar.energy > myCapacity - myEnergy;
-	const keepAttacking = powerReq && starReq;
+		myCapacity > enemy_base.energy / 2 + enemyCapacity * enemyShapePower * 1.2;
+	const starReq = memory.centerStar.energy * 0.8 >= myCapacity - myEnergy;
+	const supplyReq = mySupply >= settings.allInSupply * 0.8 || shouldAllIn;
+	const keepAttacking = powerReq && starReq && supplyReq;
 
 	memory.retakeActive = false;
 	memory.strategy = keepAttacking ? "rally" : "economic";
