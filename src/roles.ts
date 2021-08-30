@@ -50,10 +50,7 @@ function removeExtras() {
 	// This should be called before other extra-removing methods
 	for (const s of Turn.myUnits) {
 		const energyRatio = Utils.energyRatio(s);
-		// Size 1 units can be more aggressive vs squares and triangles
-		const lowThreshold =
-			(!Turn.vsCircles && s.size === 1) || Utils.inRange(s, enemy_base);
-		const retreatThreshold = lowThreshold ? 0 : 0.2;
+		const retreatThreshold = 0.2;
 		// Non-worker units with low energy should always retreat and refuel
 		if (energyRatio <= retreatThreshold && refuelable.includes(s.mark)) {
 			setRole(s, "refuel");
@@ -79,7 +76,7 @@ function removeExtras() {
 
 		// Reset full energy refueling units to idle
 		if (s.mark === "refuel") {
-			const groupEarly = memory.forceGroup || (energyRatio >= 0.8 && groupDist > 400);
+			const groupEarly = memory.forceGroup || (energyRatio >= 0.8 && groupDist > 500);
 			if (Turn.isAttacking && groupEarly) {
 				setRole(s, "attack");
 			} else if (energyRatio === 1) setRole(s, "idle");
@@ -97,8 +94,10 @@ function removeExtras() {
 	}
 
 	// SCOUTS
-	while (register.scout.length > Math.max(Turn.idealScouts, 0)) {
-		setRole(Utils.nearest(base, register.scout), "idle");
+	while (register.scout.length > Math.max(Turn.idealScouts, 0) + 1) {
+		const removable = register.scout.filter((s) => !Utils.inRange(s, enemy_base, 600));
+		if (removable.length) setRole(Utils.nearest(base, removable), "idle");
+		else break;
 	}
 
 	// WORKERS

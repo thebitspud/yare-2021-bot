@@ -43,7 +43,7 @@ if (Turn.enemyAllIn) {
 const scoutPower = Turn.myUnits
 	.filter((s) => ["attack", "scout"].includes(s.mark))
 	.map((s) => s.energy)
-	.reduce((acc, n) => acc + n, 0);
+	.reduce((acc, n) => acc + n, -Turn.blockerScout.energy);
 
 const enemyBasePower = enemy_base.sight.friends
 	.map((id) => spirits[id].energy)
@@ -61,21 +61,24 @@ const unitsInDanger = Turn.myUnits.filter((s) => {
 	return Utils.inRange(s, Utils.nearest(s, nearbyEnemies), 240);
 });
 
+const outpostSafe =
+	!Turn.enemyOutpost && (outpostDisparity >= 0 || Turn.enemyRetakePower < scoutPower);
+
 /** Moves all units based on current role and turn state */
 export function findMove(s: Spirit): void {
 	const energyRatio = Utils.energyRatio(s);
 
 	const nearbyEnemies = s.sight.enemies
 		.map((id) => spirits[id])
-		.filter((t) => t.energy > 0 && Utils.inRange(s, t, 240));
+		.filter((e) => e.energy > 0 && Utils.inRange(s, e, 240));
 
 	const dangerRating =
 		nearbyEnemies
-			.map((t) => {
+			.map((e) => {
 				let distFactor = 1;
-				if (Utils.inRange(t, base)) distFactor = Turn.enemyAllIn ? 0.25 : 0.5;
-				else if (Utils.inRange(t, base, 400)) distFactor = Turn.enemyAllIn ? 0.5 : 1;
-				return t.energy * distFactor;
+				if (Utils.inRange(e, base)) distFactor = Turn.enemyAllIn ? 0.25 : 0.5;
+				else if (Utils.inRange(e, base, 400)) distFactor = Turn.enemyAllIn ? 0.5 : 1;
+				return e.energy * distFactor;
 			})
 			.reduce((acc, n) => acc + n, 0) * Turn.enemyShapePower;
 
@@ -94,21 +97,28 @@ export function findMove(s: Spirit): void {
 	// Not filtering out <0 energy units because cannot predict enemy energy transfers
 	const explodeThreats = s.sight.enemies_beamable
 		.map((id) => spirits[id])
-		.filter((t) => t.sight.enemies_beamable.length >= 3);
+		.filter((e) => e.sight.enemies_beamable.length >= 3);
 
 	if (Turn.vsTriangles && explodeThreats.length) {
-		// Always kite out of explode range vs triangles
 		const escapeVec = Utils.midpoint(
-			...explodeThreats.map((t) => Utils.normalize(Utils.vectorTo(t, s)))
+			...explodeThreats.map((e) => Utils.normalize(Utils.vectorTo(e, s)))
 		);
 
 		if (settings.debug) s.shout("avoid");
-		return s.move(Utils.add(s, Utils.normalize(escapeVec, 21)));
+		// Always attempt to kite out of explode range vs triangles
+		const nextPosition = Utils.add(s, Utils.normalize(escapeVec, 21));
+		s.move(nextPosition);
+
+		const willExplode = s.sight.enemies_beamable
+			.map((id) => spirits[id])
+			.filter((e) => Utils.inRange(e, nextPosition, 181));
+		if (willExplode.length) Turn.mustMerge.push(<CircleSpirit>s);
+		return;
 	} else if (dangerRating) {
 		// Flee if enemies have a regional power advantage
 		if (groupPower <= dangerRating) {
 			const enemyPowerVec = Utils.midpoint(
-				...nearbyEnemies.map((t) => Utils.normalize(Utils.vectorTo(t, s), t.energy))
+				...nearbyEnemies.map((e) => Utils.normalize(Utils.vectorTo(e, s), e.energy))
 			);
 
 			if (settings.debug) s.shout("avoid");
@@ -145,8 +155,8 @@ export function findMove(s: Spirit): void {
 			// Wait to intercept at the computed defender rally point
 			return safeMove(s, defenderRally);
 		case "scout":
-			if (Turn.enemyOutpost || outpostDisparity < 0 || Turn.blockerScout === s) {
-				// Pressure enemy base from opposite direction of star
+			if (!outpostSafe || Turn.blockerScout === s) {
+				// Pressure enemy base from opposite direction of star if enemy dominant at outpost
 				if (allyPower > enemyBasePower + enemy_base.energy / 2) {
 					// If can deal HP damage, attack enemy base
 					return safeMove(s, Utils.nextPosition(enemy_base, s), 601);
@@ -155,7 +165,7 @@ export function findMove(s: Spirit): void {
 					return safeMove(s, loci.enemyBaseAntipode, 601);
 				}
 			} else {
-				const outpostLow = outpost.energy < Math.max(25, Turn.outpostEnemyPower);
+				const outpostLow = outpost.energy < Math.max(20, Turn.outpostEnemyPower);
 				const canFuelOutpost =
 					outpostLow && energyRatio > 0.5 && !Utils.inRange(s, outpost);
 				const contestOutpost = Turn.blockerScout !== s || outpost.energy === 0;
@@ -202,7 +212,7 @@ export function findMove(s: Spirit): void {
 
 			if (bestStar === memory.centerStar) {
 				// Face away from outpost if hostile, and towards if friendly
-				if (Turn.enemyOutpost) towards = loci.outpostAntipode;
+				if (!outpostSafe) towards = loci.outpostAntipode;
 				else if (memory.strategy === "all-in")
 					if (Turn.doConverge) return s.move(Turn.rallyPoint);
 					else towards = enemy_base;
@@ -222,7 +232,7 @@ export function findMove(s: Spirit): void {
 		case "idle":
 		default:
 			if (Turn.refuelAtCenter) {
-				const harvestFrom = Turn.enemyOutpost ? loci.outpostAntipode : loci.centerToBase;
+				const harvestFrom = outpostSafe ? loci.centerToBase : loci.outpostAntipode;
 				// Harvest energy from center if able to and nothing better to do
 				if (energyRatio > 0 && Utils.inRange(s, base)) {
 					return safeMove(s, loci.baseToCenter);
@@ -248,8 +258,7 @@ export function findMove(s: Spirit): void {
 function safeMove(s: Spirit, target: Position | Entity, range?: number) {
 	if ("position" in target) target = target.position;
 	// Just move normally if outpost is safe
-	if (!Turn.enemyOutpost && (outpostDisparity >= 0 || Turn.enemyRetakePower < scoutPower))
-		return s.move(target);
+	if (outpostSafe) return s.move(target);
 
 	// Movement vector that spirit would follow normally and resulting position
 	const unsafeNext = Utils.nextPosition(s, target, 21);

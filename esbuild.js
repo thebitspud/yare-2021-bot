@@ -18,9 +18,9 @@ function input() {
 const flags = process.argv.splice(2);
 
 const shouldWatch = flags.includes("-w") || flags.includes("--watch");
-const shouldSync = flags.includes("-s") || flags.includes("--sync");
-const switchAcc = flags.includes("-a") || flags.includes("--switch-acc");
 const autoUpload = flags.includes("-u") || flags.includes("--auto-upload");
+const shouldSync = flags.includes("-s") || flags.includes("--sync") || autoUpload;
+const switchAcc = flags.includes("-a") || flags.includes("--switch-acc");
 
 const usingTs = fs.existsSync(path.join(__dirname, "src/main.ts"));
 const usingJs = fs.existsSync(path.join(__dirname, "src/main.js"));
@@ -74,7 +74,7 @@ async function upload() {
 		console.error("Upload to yare failed.".red.bold);
 	}
 
-	uploadTimer = setTimeout(() => upload(), 15000);
+	if (autoUpload) uploadTimer = setTimeout(() => upload(), 15000);
 }
 
 function login() {

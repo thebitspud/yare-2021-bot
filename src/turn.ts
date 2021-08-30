@@ -33,7 +33,6 @@ export const targetEnemy =
 
 export const vsSquares = enemy_base.shape === "squares";
 export const vsTriangles = enemy_base.shape === "triangles";
-export const vsCircles = enemy_base.shape === "circles";
 export const enemyShapePower = vsSquares ? 0.7 : vsTriangles ? 0.85 : 1;
 
 /**
@@ -113,6 +112,7 @@ export const refuelAtCenter = canRefuelCenter();
 export const maxWorkers = getMaxWorkers();
 export let idealDefenders = getIdealDefenders();
 export let idealScouts = getIdealScouts();
+export let mustMerge: CircleSpirit[] = [];
 if (tick > (vsSquares ? 50 : 30) && !enemyOutpost) idealScouts++;
 
 const powerRatio = myEnergy / (enemyEnergy * enemyShapePower);
@@ -126,7 +126,7 @@ if (isAttacking) updateAttackStatus();
 // Starting an attack on the enemy base or outpost
 if (!isAttacking && readyToAttack) {
 	memory.strategy = "rally";
-	if (shouldRetake) memory.retakeActive = true;
+	memory.retakeActive = shouldRetake;
 }
 
 // If rallying, find best star to refuel from
@@ -140,8 +140,8 @@ if (memory.strategy === "rally") {
 export const rallyStar = memory.refuelCenter ? memory.centerStar : memory.myStar;
 export let rallyPoint = enemyOutpost
 	? memory.retakeActive
-		? Utils.lerp(memory.myStar, base)
-		: memory.loci.outpostAntipode
+		? Utils.lerp(Utils.lerp(memory.myStar, base), outpost)
+		: Utils.nextPosition(outpost, memory.loci.outpostAntipode, 425)
 	: memory.loci.centerToOutpost;
 updateRallyPoint();
 
@@ -150,7 +150,7 @@ export let doConverge = false;
 // Determining whether the bot is ready to attack
 if (memory.strategy === "rally") {
 	const attackers = myUnits.filter((s) => ["attack", "refuel"].includes(s.mark));
-	if (attackers.length && enemyOutpost) {
+	if (attackers.length && rallyPoint !== memory.loci.centerToOutpost) {
 		rallyPoint = Utils.lerp(rallyPoint, Utils.midpoint(...attackers));
 		updateRallyPoint();
 	}
@@ -177,14 +177,18 @@ if (memory.strategy === "rally") {
 			? // If already grouping, return if star now has enough energy for all
 			  rallyStar.energy < attackCapacity - attackEnergy
 			: // Otherwise, force group if star is drained
-			  rallyStar.energy < 5;
+			  rallyStar.energy < 10;
 	}
 
-	const groupReq = groupedSupply >= attackSupply * settings.attackGroupSize;
-	const starReq = attackEnergy / attackCapacity >= 0.9 || rallyStar.energy < mySupply;
+	const groupSize = shouldRetake ? settings.retakeGroupSize : settings.allInGroupSize;
+	const groupReq = groupedSupply > attackSupply * groupSize;
+	const rallyInRange = Utils.inRange(rallyStar, rallyPoint);
+	const starReq =
+		attackEnergy / attackCapacity > 0.9 || rallyStar.energy < 10 || !rallyInRange;
 
 	// Waiting until units are grouped and ready before issuing the final attack order
 	if (starReq && groupReq) {
+		memory.retakeActive = shouldRetake;
 		memory.strategy = memory.retakeActive ? "retake" : "all-in";
 		// Do one final grouping action when ready
 		rallyPoint = Utils.midpoint(...attackers);
@@ -206,16 +210,16 @@ function getMaxWorkers(): number {
 	const newUnitCost =
 		(supplyCap - mySupply) * (base.current_spirit_cost - memory.mySize * 10);
 	const vacantCapacity = myCapacity - myEnergy;
-	const canHarvestAll = memory.myStar.energy > (newUnitCost + vacantCapacity) * 0.5;
+	const canHarvestAll = memory.myStar.energy > (newUnitCost + vacantCapacity) * 0.67;
 	// Harvesting restriction is completely removed if star can fully energize all units
 	if (canHarvestAll && !canHarvestCenter) return supplyCap;
 
 	// If far away from being able to attack, let star grow a bit
-	if (mySupply < supplyCap - 50 && memory.myStar.energy < 900) energyRegenCap -= 0.5;
+	if (mySupply < supplyCap - 25 && memory.myStar.energy < 900) energyRegenCap -= 1;
 
 	// Can over-harvest if star has sufficient energy and nearing attack supply
-	if (mySupply >= supplyCap - 25 && memory.myStar.energy > 200) energyRegenCap += 0.5;
-	if (mySupply >= supplyCap - 18 && memory.myStar.energy > 250) energyRegenCap += 1;
+	if (memory.myStar.energy > (supplyCap - mySupply) * 10) energyRegenCap += 0.5;
+	if (memory.myStar.energy > (supplyCap - mySupply) * 20) energyRegenCap += 1;
 	if (mySupply >= supplyCap - 12 && !canHarvestCenter) energyRegenCap += 1;
 
 	// Calculate ideal worker count
@@ -241,13 +245,17 @@ function getIdealDefenders(): number {
 
 /** Returns the optimal number of scouts based on current game state */
 function getIdealScouts(): number {
-	if (vsSquares && (enemyAllIn || tick < 30)) return 0;
-	if (!settings.extraScouts || enemyOutpost) return settings.minScouts;
+	if (vsSquares) {
+		if (enemyAllIn || tick < 30) return 0;
+		if (enemyOutpost) return settings.minScouts;
+	}
+	if (!settings.extraScouts) return settings.minScouts;
 
 	// Calculating ideal scout count from total and idle units
-	const fromTotalUnits = settings.minScouts + myUnits.length / 8;
+	const fromTotalUnits = Math.max(settings.minScouts, mySupply / 8 - 2);
 	const idleCount = myUnits.length - maxWorkers - idealDefenders;
-	const fromIdleUnits = idleCount * (enemyRetakePower > outpost.energy / 2 ? 1 : 0.5);
+	const allScouts = !enemyOutpost && enemyRetakePower > outpost.energy / 2;
+	const fromIdleUnits = Math.min(idleCount * (allScouts ? 1 : 0.5), mySupply / 2);
 
 	// Returning the calculation that results in the most scouts
 	return Math.ceil(Math.max(fromTotalUnits, fromIdleUnits));
@@ -259,11 +267,13 @@ function shouldRetakeOutpost(): boolean {
 	if (!settings.doRetakes) return false;
 
 	// Don't attempt retake if it is likely to fail
-	const enemyDefense = 20 + outpost.energy / 2 + enemyCapacity * enemyShapePower;
+	const enemyDefendPower =
+		((enemyCapacity + outpostEnemyPower * 1.5) / 2) * enemyShapePower;
+	const enemyDefense = 20 + outpost.energy / 2 + enemyDefendPower;
 	if (myCapacity < enemyDefense) return false;
 
 	// Attempt retake if center star has enough energy to be worth contesting
-	return memory.centerStar.energy > 25 + enemyDefense / 3;
+	return memory.centerStar.energy > 25 + enemyDefense / 4;
 }
 
 /** Returns whether idle and refueling units can energize from the center star */
@@ -281,7 +291,7 @@ function canRefuelCenter(): boolean {
 			.filter((e) => {
 				const checkPoint = Utils.nextPosition(memory.loci.outpostAntipode, base);
 				return (
-					Utils.inRange(e, memory.loci.outpostAntipode, 200) ||
+					Utils.inRange(e, memory.loci.outpostAntipode, 220) ||
 					Utils.inRange(e, checkPoint, 240)
 				);
 			})

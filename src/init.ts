@@ -38,13 +38,15 @@ if (memory.init !== BOT_VERSION) {
 
 export const settings = {
 	debug: true,
-	allInSupply: 51,
+	allInSupply: 101,
+	allInGroupSize: 0.75, // float in [0, 1]
 	doRetakes: true,
 	retakeSupply: 51, // should be <= allInSupply
-	attackGroupSize: 0.75, // float in [0, 1]
+	retakeGroupSize: 0.6, // float in [0, 1]
 	haulRelayRatio: 2.6,
-	maxMergeSize: 1, // 1 to never merge
+	idealMergeSize: 1, // 1 to never merge
+	maxMergeSize: 16, // vs triangle explosions
 	attackGuards: 3,
-	minScouts: 1,
+	minScouts: 0,
 	extraScouts: false,
 };
