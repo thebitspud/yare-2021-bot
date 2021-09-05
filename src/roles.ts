@@ -109,17 +109,19 @@ function removeExtras() {
 	}
 }
 
-const mustDefend = Turn.invaders.far.length >= Turn.enemyUnits.length / 2;
+const canDefend = Turn.mySupply + (Turn.fastSqrRush ? 3 : 0) > Turn.enemyScoutPower;
+const mustDefend = Turn.enemyAllIn && canDefend;
 const mustGroup =
 	Turn.enemyUnits.filter(
-		(e) => Utils.inRange(e, base, 750) || Utils.inRange(e, memory.myStar, 650)
+		(e) =>
+			Utils.inRange(e, base, Turn.vsSquares ? 850 : 700) ||
+			Utils.inRange(e, memory.myStar, Turn.vsSquares ? 650 : 500)
 	).length >=
 	Turn.enemyUnits.length / 2;
 
 function assignRoles() {
 	// ATTACKERS
-	// Turn.isAttacking is delayed by 1 turn so I'm using this instead
-	if (["rally", "retake", "all-in"].includes(memory.strategy)) {
+	if (Turn.isAttacking) {
 		for (const s of Turn.myUnits) {
 			// When attacking, only other valid roles are defend and refuel
 			const canBeAttacker =
@@ -165,13 +167,15 @@ function assignRoles() {
 
 	// Case handler for preparing to defend when being all-inned
 	if (Turn.enemyAllIn && mustDefend) {
-		const refuelCutoff = Turn.vsSquares ? 0.5 : 0.7;
+		const refuelCutoff = Turn.fastSqrRush ? 0.5 : 0.7;
 		const excludedRoles: MarkState[] = ["defend", "refuel"];
 
 		if (Turn.isAttacking) {
+			// Deciding between attacking and defending
+			const distBuffer = (Turn.allyOutpost ? 50 : 200) + (Turn.vsSquares ? 200 : 0);
 			const allyDist = Utils.dist(Utils.midpoint(...Turn.myUnits), enemy_base);
 			const enemyDist = Utils.dist(Utils.midpoint(...Turn.enemyUnits), base);
-			if (allyDist + (Turn.vsSquares ? 300 : 100) < enemyDist) {
+			if (allyDist + distBuffer < enemyDist) {
 				excludedRoles.push("attack");
 			}
 		}

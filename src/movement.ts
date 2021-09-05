@@ -17,8 +17,8 @@ if (Turn.enemyAllIn) {
 	// If enemy is all-inning, group up near friendly structure
 	defenderRally = Utils.nextPosition(
 		starSide ? memory.myStar : base,
-		Utils.lerp(defendMidpoint, Turn.targetEnemy, 0.2),
-		starSide ? 150 : 100
+		Utils.lerp(defendMidpoint, Turn.targetEnemy, 0.25),
+		150
 	);
 } else if (Turn.invaders.far.length) {
 	const constraintNeeded =

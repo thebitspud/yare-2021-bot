@@ -2,11 +2,10 @@ import * as Utils from "./utils";
 import * as Turn from "./turn";
 import "./roles";
 
-const canDefend =
-	Turn.mySupply + (Turn.vsSquares ? 2 : 0) >=
-	Turn.enemyScouts.length * memory.enemySize * Turn.enemyShapePower;
+const canDefend = Turn.mySupply + (Turn.fastSqrRush ? 3 : 0) > Turn.enemyScoutPower;
 const enemiesArriving =
-	Turn.enemyUnits.filter((e) => Utils.inRange(e, base, 900)).length >=
+	Turn.enemyUnits.filter((e) => Utils.inRange(e, base, Turn.fastSqrRush ? 1100 : 950))
+		.length >=
 	Turn.enemyUnits.length / 2;
 const winPower = Turn.myUnits
 	.filter((s) => Utils.inRange(s, enemy_base, 300))
@@ -19,28 +18,28 @@ const outpostEnergizeThreat = Turn.enemyUnits
 const canWinGame =
 	winPower * 2 >= enemy_base.energy + Turn.enemyBaseDefense * enemy_base.hp;
 
-// When being all-inned by squares, assume they will always attack a target no matter what
-if (Turn.enemyAllIn && enemy_base.shape === "squares") {
+if (Turn.vsTriangles) {
+	const combatEnemies = Turn.enemyUnits.filter((e) => e.sight.enemies_beamable.length);
+	// Accounting for enemy support energizing
+	for (const e of Turn.enemyUnits) {
+		// Don't do calculation on combat units
+		if (e.sight.enemies_beamable.length) continue;
+
+		// Ignore if unit has no combat units in range
+		const combatInRange = e.sight.friends_beamable
+			.map((t) => spirits[t])
+			.filter((t) => combatEnemies.includes(t));
+		if (!combatInRange.length) continue;
+
+		// Cannot predict energizes, so assume equal distribution of energy
+		const power = Math.min(e.size, e.energy) / combatInRange.length;
+		for (let t of combatInRange) t.energy += power;
+	}
+} else if (Turn.enemyAllIn && Turn.vsSquares) {
+	// When being all-inned by squares, assume they will always attack a target no matter what
 	for (const e of Turn.enemyUnits) {
 		e.energy -= Math.min(e.size, e.energy);
 	}
-}
-
-const combatEnemies = Turn.enemyUnits.filter((e) => e.sight.enemies_beamable.length);
-// Accounting for enemy support energizing
-for (const e of Turn.enemyUnits) {
-	// Don't do calculation on combat units
-	if (e.sight.enemies_beamable.length) continue;
-
-	// Ignore if unit has no combat units in range
-	const combatInRange = e.sight.friends_beamable
-		.map((t) => spirits[t])
-		.filter((t) => combatEnemies.includes(t));
-	if (!combatInRange.length) continue;
-
-	// Cannot predict energizes, so assume equal distribution of energy
-	const power = Math.min(e.size, e.energy) / combatInRange.length;
-	for (let t of combatInRange) t.energy += power;
 }
 
 /** Attempts to select an optimal energize target for the given spirit */
@@ -56,7 +55,8 @@ export function useEnergize(s: Spirit): void {
 
 	const enemyTargets = s.sight.enemies_beamable
 		.map((id) => spirits[id])
-		.filter((t) => Utils.energyRatio(t) >= 0);
+		.filter((t) => Utils.energyRatio(t) >= 0)
+		.sort((e1, e2) => Utils.dist(e1, s) - Utils.dist(e2, s));
 
 	const energizePower = Math.min(s.size, s.energy);
 
@@ -89,7 +89,7 @@ export function useEnergize(s: Spirit): void {
 	const energyRatio = Utils.energyRatio(s);
 
 	// Need to retain some energy on spirit for combat efficiency
-	if (Utils.inRange(s, outpost)) {
+	if (Utils.inRange(s, outpost) && Turn.enemyUnits.length) {
 		if (Turn.isAttacking) {
 			// Always energize the outpost if hostile or low
 			if (Turn.enemyOutpost && outpost.energy > -outpostEnergizeThreat)
@@ -136,7 +136,8 @@ export function useEnergize(s: Spirit): void {
 	// Allies that could benefit from an equalizing energy transfer
 	let lowAllies;
 
-	if (bestStar === nearestStar && canHarvestNearest && !workerRoles.includes(s.mark)) {
+	const canHarvestBest = bestStar === nearestStar && canHarvestNearest;
+	if (canHarvestBest && !workerRoles.includes(s.mark) && !Turn.enemyAllIn) {
 		// Non-worker units at stars can boost up allies with less energy
 		lowAllies = allyTargets.filter(
 			(t) =>
@@ -155,9 +156,6 @@ export function useEnergize(s: Spirit): void {
 			const allyTransferEnergy = (t.energy + energizePower) / t.energy_capacity;
 			return allyTransferEnergy <= transferEnergy;
 		});
-	}
-
-	if (lowAllies) {
 	}
 
 	if (allyTargets.length) {

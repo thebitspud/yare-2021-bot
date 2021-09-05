@@ -44,9 +44,9 @@ export const settings = {
 	retakeSupply: 51, // should be <= allInSupply
 	retakeGroupSize: 0.6, // float in [0, 1]
 	haulRelayRatio: 2.6,
-	idealMergeSize: 1, // 1 to never merge
+	idealMergeSize: 1, // 1 to not merge
 	maxMergeSize: 16, // vs triangle explosions
 	attackGuards: 3,
-	minScouts: 0,
-	extraScouts: false,
+	minScouts: 1,
+	extraScouts: true,
 };

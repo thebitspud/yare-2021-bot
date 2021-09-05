@@ -1,6 +1,5 @@
 import { BOT_VERSION, settings } from "./init";
 import * as Utils from "./utils";
-import { inRange } from "./utils";
 
 const enemy_spirits = Object.values(spirits).filter((s) => !my_spirits.includes(s));
 
@@ -53,6 +52,7 @@ export let enemyRetakePower = 0;
 export let enemyEnergy = 0;
 export let enemyCapacity = 0;
 export let enemyBaseDefense = 0;
+export let enemyScoutPower = 0;
 export let enemyScouts: Spirit[] = [];
 
 for (const e of enemyUnits) {
@@ -91,9 +91,10 @@ for (const e of enemyUnits) {
 		enemyBaseDefense += Math.min(e.size, e.energy);
 	}
 
-	// Checking if the enemy is headed towards the outpost or my base
+	// Checking if the enemy is headed towards my side of the map
 	if (Utils.inRange(e, base, 1100) || Utils.inRange(e, memory.myStar, 1200)) {
 		enemyScouts.push(e);
+		enemyScoutPower += e.energy * enemyShapePower;
 	}
 
 	enemyEnergy += e.energy;
@@ -106,15 +107,17 @@ for (const e of enemyUnits) {
 export const allyOutpost = outpost.control === this_player_id;
 export const enemyOutpost = outpost.control !== this_player_id && outpost.energy > 0;
 export const enemyAllIn = enemyScouts.length > 0.75 * enemyUnits.length;
-export const isAttacking = ["rally", "retake", "all-in"].includes(memory.strategy);
+export const fastSqrRush = enemyAllIn && vsSquares && tick < 100;
+export let isAttacking = ["rally", "retake", "all-in"].includes(memory.strategy);
 export const refuelAtCenter = canRefuelCenter();
 
 export const maxWorkers = getMaxWorkers();
 export let idealDefenders = getIdealDefenders();
 export let idealScouts = getIdealScouts();
 export let mustMerge: CircleSpirit[] = [];
-if (tick > (vsSquares ? 50 : 30) && !enemyOutpost) idealScouts++;
 
+const sendScout = settings.extraScouts || settings.minScouts;
+if (tick > (vsSquares ? 50 : 30) && !enemyOutpost && sendScout) idealScouts++;
 const powerRatio = myEnergy / (enemyEnergy * enemyShapePower);
 const shouldRetake = shouldRetakeOutpost() && mySupply >= settings.retakeSupply;
 const shouldAllIn =
@@ -164,7 +167,7 @@ if (memory.strategy === "rally") {
 		attackSupply += s.size;
 		attackEnergy += s.energy;
 		attackCapacity += s.energy_capacity;
-		if (Utils.inRange(s, rallyPoint, 25)) {
+		if (Utils.inRange(s, rallyPoint, 20)) {
 			groupedSupply += s.size;
 		}
 	}
@@ -196,6 +199,8 @@ if (memory.strategy === "rally") {
 	}
 }
 
+isAttacking = ["rally", "retake", "all-in"].includes(memory.strategy);
+
 /* HELPER FUNCTIONS */
 
 /** Returns the optimal number of workers based on the current game state */
@@ -218,9 +223,9 @@ function getMaxWorkers(): number {
 	if (mySupply < supplyCap - 25 && memory.myStar.energy < 900) energyRegenCap -= 1;
 
 	// Can over-harvest if star has sufficient energy and nearing attack supply
-	if (memory.myStar.energy > (supplyCap - mySupply) * 10) energyRegenCap += 0.5;
+	if (memory.myStar.energy > (supplyCap - mySupply) * 10) energyRegenCap += 1;
 	if (memory.myStar.energy > (supplyCap - mySupply) * 20) energyRegenCap += 1;
-	if (mySupply >= supplyCap - 12 && !canHarvestCenter) energyRegenCap += 1;
+	if (mySupply >= supplyCap - 12 && !canHarvestCenter) energyRegenCap += 2;
 
 	// Calculate ideal worker count
 	const workerEfficiency = 1 / (settings.haulRelayRatio + 1);
@@ -233,9 +238,10 @@ function getIdealDefenders(): number {
 
 	// Assigning additional defenders when attacking to prevent counter-attacks
 	if (isAttacking && enemySupply > 0) {
+		const distBuffer = (allyOutpost ? 150 : 250) + (vsSquares ? 250 : 0);
 		const allyDist = Utils.dist(Utils.midpoint(...myUnits), enemy_base);
 		const enemyDist = Utils.dist(Utils.nearest(base, enemyUnits), base);
-		if (allyDist + (vsSquares ? 400 : 100) > enemyDist) {
+		if (allyDist + distBuffer > enemyDist) {
 			defenders += settings.attackGuards * (vsSquares ? 1.5 : 1);
 		}
 	}
@@ -251,14 +257,21 @@ function getIdealScouts(): number {
 	}
 	if (!settings.extraScouts) return settings.minScouts;
 
-	// Calculating ideal scout count from total and idle units
+	// Using various methods to compute a good scout count
 	const fromTotalUnits = Math.max(settings.minScouts, mySupply / 8 - 2);
+
 	const idleCount = myUnits.length - maxWorkers - idealDefenders;
 	const allScouts = !enemyOutpost && enemyRetakePower > outpost.energy / 2;
-	const fromIdleUnits = Math.min(idleCount * (allScouts ? 1 : 0.5), mySupply / 2);
+	const fromIdleUnits = idleCount * (allScouts ? 1 : 0.5);
 
-	// Returning the calculation that results in the most scouts
-	return Math.ceil(Math.max(fromTotalUnits, fromIdleUnits));
+	let fromEnemyPower =
+		((outpostEnemyPower + enemyRetakePower) / memory.mySize - outpost.energy) / 2;
+	if (enemyOutpost) fromEnemyPower = 0;
+
+	// Returning the calculation that results in the best scout count
+	return Math.ceil(
+		Math.min(Math.max(fromTotalUnits, fromIdleUnits, fromEnemyPower), mySupply / 2)
+	);
 }
 
 /** Returns whether the bot should attempt to retake an enemy outpost */
@@ -268,19 +281,20 @@ function shouldRetakeOutpost(): boolean {
 
 	// Don't attempt retake if it is likely to fail
 	const enemyDefendPower =
-		((enemyCapacity + outpostEnemyPower * 1.5) / 2) * enemyShapePower;
+		((enemyCapacity + outpostEnemyPower * 1.25) / 2) * enemyShapePower;
 	const enemyDefense = 20 + outpost.energy / 2 + enemyDefendPower;
-	if (myCapacity < enemyDefense) return false;
+	if (myCapacity <= enemyDefense) return false;
 
+	const energyReq = memory.centerStar.energy > 25 + enemyDefense / 4;
+	const supplyReq = mySupply < settings.allInSupply * 0.75;
 	// Attempt retake if center star has enough energy to be worth contesting
-	return memory.centerStar.energy > 25 + enemyDefense / 4;
+	return energyReq || supplyReq;
 }
 
 /** Returns whether idle and refueling units can energize from the center star */
 function canRefuelCenter(): boolean {
 	if (memory.centerStar.active_in >= 25) return false;
-	if (tick > memory.centerStar.active_at + 5)
-		if (memory.centerStar.energy < 5) return false;
+	if (memory.centerStar.energy < 5) return false;
 	if (!enemyOutpost) return true;
 	if (outpost.energy > 300) return false;
 
@@ -308,7 +322,7 @@ function canRefuelCenter(): boolean {
 function updateRallyPoint() {
 	if (enemyOutpost) {
 		const range = outpost.energy >= 400 ? 620 : 420;
-		if (inRange(rallyPoint, outpost, range))
+		if (Utils.inRange(rallyPoint, outpost, range))
 			rallyPoint = Utils.nextPosition(outpost, rallyPoint, range);
 	}
 }
