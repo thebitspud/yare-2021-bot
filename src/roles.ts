@@ -200,7 +200,7 @@ function assignRoles() {
 				(s) => Utils.energyRatio(s) > 0.8
 			);
 			if (validIdle.length) {
-				setRole(Utils.nearest(memory.centerStar, register.idle), "scout");
+				setRole(Utils.nearest(memory.centerStar, validIdle), "scout");
 			} else break; // If cannot fill, break to prevent infinite loop
 		}
 	}

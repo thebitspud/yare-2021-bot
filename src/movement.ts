@@ -15,13 +15,14 @@ const nearestEnemyRetaker =
 	Utils.nearest(
 		outpost,
 		Turn.enemyUnits.filter(
-			(e) => Utils.inRange(e, outpost, 400) || Utils.inRange(e, memory.centerStar)
+			(e) => Utils.inRange(e, outpost, 400) || Utils.inRange(e, memory.centerStar, 300)
 		)
 	) ?? Turn.enemy_spirits[0];
+const enemyNearestTo = Utils.nearest(nearestEnemyRetaker, [outpost, memory.centerStar]);
 const scoutRally = Utils.nextPosition(
-	outpost,
-	Utils.lerp(scoutMidpoint, nearestEnemyRetaker, 0.25),
-	Utils.dist(nearestEnemyRetaker, outpost) / 2
+	enemyNearestTo,
+	Utils.lerp(scoutMidpoint, nearestEnemyRetaker, 0.3),
+	Utils.dist(nearestEnemyRetaker, enemyNearestTo) / 2
 );
 
 const starSide =
@@ -92,12 +93,17 @@ export function findMove(s: Spirit): void {
 				let distFactor = 1;
 				if (Utils.inRange(e, base)) distFactor = Turn.enemyAllIn ? 0.25 : 0.5;
 				else if (Utils.inRange(e, base, 400)) distFactor = Turn.enemyAllIn ? 0.5 : 1;
+				else if (Turn.allyOutpost) {
+					if (Utils.inRange(e, outpost)) distFactor = 0.8;
+					else if (Utils.inRange(e, outpost, 400)) distFactor = 0.9;
+				}
 				return e.energy * distFactor;
 			})
 			.reduce((acc, n) => acc + n, 0) * Turn.enemyShapePower;
 
-	const groupPower = unitsInDanger
-		.filter((t) => Utils.inRange(s, t, 200))
+	const groupPower = s.sight.friends_beamable
+		.map((id) => spirits[id])
+		.filter((t) => unitsInDanger.includes(t) || Utils.inRange(s, t, 30))
 		.map((t) => t.energy)
 		.reduce((acc, n) => acc + n, 0);
 
@@ -182,7 +188,10 @@ export function findMove(s: Spirit): void {
 				const outpostLow = outpost.energy < Math.max(20, Turn.outpostEnemyPower);
 				const canFuelOutpost =
 					outpostLow && energyRatio > 0.5 && !Utils.inRange(s, outpost);
-				const contestOutpost = Turn.blockerScout !== s || outpost.energy === 0;
+				const contestOutpost =
+					outpost.energy === 0 ||
+					(Turn.blockerScout !== s &&
+						(Turn.enemyRetakePower > 0 || Turn.outpostEnemyPower > scoutPower));
 				if (Turn.enemyRetakePower) {
 					// If enemy units in outpost range, move to intercept
 					return s.move(scoutRally);

@@ -43,6 +43,14 @@ if (Turn.vsTriangles) {
 	}
 }
 
+// Accounting for potential self-energizing
+for (const e of Turn.enemyUnits) {
+	const nearestStar = Utils.nearest(e, Object.values(stars));
+	if (Utils.inRange(e, nearestStar)) {
+		e.energy += Math.min(e.size, nearestStar.energy);
+	}
+}
+
 /** Attempts to select an optimal energize target for the given spirit */
 export function useEnergize(s: Spirit): void {
 	const nearestStar = Utils.nearest(s, Object.values(stars));

@@ -76,7 +76,7 @@ for (const e of enemyUnits) {
 
 		// Computing an overall invader threat level
 		let baseDistFactor = (1100 - Math.max(Math.min(starDist, baseDist), 200)) / 600;
-		if (baseDist > 600) baseDistFactor *= vsSquares ? 0.67 : 0.33;
+		if (baseDist > 600) baseDistFactor *= vsSquares ? 0.5 : 0.33;
 		invaders.threat += Math.max(e.size, e.energy) * baseDistFactor;
 	}
 
@@ -240,12 +240,10 @@ function getIdealDefenders(): number {
 
 	// Assigning additional defenders when attacking to prevent counter-attacks
 	if (isAttacking && enemySupply > 0) {
-		const distBuffer = (allyOutpost ? 150 : 250) + (vsSquares ? 250 : 0);
+		const distBuffer = (allyOutpost ? 100 : 250) + (vsSquares ? 250 : 0);
 		const allyDist = Utils.dist(Utils.midpoint(...myUnits), enemy_base);
 		const enemyDist = Utils.dist(Utils.nearest(base, enemyUnits), base);
-		if (allyDist + distBuffer > enemyDist) {
-			defenders += settings.minAttackGuards * (vsSquares ? 1.5 : 1);
-		}
+		if (allyDist + distBuffer > enemyDist) defenders += settings.minAttackGuards;
 	}
 
 	return Math.ceil(defenders);
@@ -268,7 +266,8 @@ function getIdealScouts(): number {
 
 	const enemyThreat = (outpostEnemyPower - outpost.energy / 2) * enemyShapePower;
 	let fromEnemyPower = enemyThreat / (memory.mySize * 10);
-	if (enemyOutpost || fromEnemyPower >= mySupply * 0.7) fromEnemyPower = 0;
+	if (enemyOutpost || fromEnemyPower >= mySupply * settings.maxContestRatio)
+		fromEnemyPower = 0;
 
 	// Returning the calculation that results in the best scout count
 	return Math.ceil(Math.max(fromTotalUnits, fromIdleUnits, fromEnemyPower));
