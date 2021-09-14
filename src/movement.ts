@@ -10,6 +10,20 @@ const register = Roles.register;
 let defenderRally = Utils.lerp(memory.myStar, memory.loci.baseToCenter, 0.6);
 const defendMidpoint = Utils.midpoint(...register.defend);
 
+const scoutMidpoint = Utils.midpoint(...register.scout);
+const nearestEnemyRetaker =
+	Utils.nearest(
+		outpost,
+		Turn.enemyUnits.filter(
+			(e) => Utils.inRange(e, outpost, 400) || Utils.inRange(e, memory.centerStar)
+		)
+	) ?? Turn.enemy_spirits[0];
+const scoutRally = Utils.nextPosition(
+	outpost,
+	Utils.lerp(scoutMidpoint, nearestEnemyRetaker, 0.25),
+	Utils.dist(nearestEnemyRetaker, outpost) / 2
+);
+
 const starSide =
 	Utils.dist(Turn.targetEnemy, memory.myStar) < Utils.dist(Turn.targetEnemy, base);
 
@@ -18,7 +32,7 @@ if (Turn.enemyAllIn) {
 	defenderRally = Utils.nextPosition(
 		starSide ? memory.myStar : base,
 		Utils.lerp(defendMidpoint, Turn.targetEnemy, 0.25),
-		150
+		starSide ? 150 : 120
 	);
 } else if (Turn.invaders.far.length) {
 	const constraintNeeded =
@@ -62,7 +76,7 @@ const unitsInDanger = Turn.myUnits.filter((s) => {
 });
 
 const outpostSafe =
-	!Turn.enemyOutpost && (outpostDisparity >= 0 || Turn.enemyRetakePower < scoutPower);
+	!Turn.enemyOutpost && (outpostDisparity >= 0 || Turn.enemyRetakePower <= scoutPower);
 
 /** Moves all units based on current role and turn state */
 export function findMove(s: Spirit): void {
@@ -169,9 +183,9 @@ export function findMove(s: Spirit): void {
 				const canFuelOutpost =
 					outpostLow && energyRatio > 0.5 && !Utils.inRange(s, outpost);
 				const contestOutpost = Turn.blockerScout !== s || outpost.energy === 0;
-				if (Turn.outpostEnemyPower > scoutPower || Turn.enemyRetakePower) {
-					// If need outpost to win fight, retreat to center
-					return s.move(loci.centerToOutpost);
+				if (Turn.enemyRetakePower) {
+					// If enemy units in outpost range, move to intercept
+					return s.move(scoutRally);
 				} else if (canFuelOutpost && contestOutpost) {
 					// If outpost is low, move towards it to energize
 					return s.move(Utils.nextPosition(outpost, s, 100));
@@ -205,7 +219,6 @@ export function findMove(s: Spirit): void {
 		case "refuel":
 			let starList: Star[] = [Turn.rallyStar];
 			if (Turn.refuelAtCenter) starList.push(memory.centerStar);
-			if (Utils.inRange(s, memory.enemyStar, 600)) starList.push(memory.enemyStar);
 
 			const bestStar = Utils.nearest(s, starList);
 			let towards: Position | Entity;

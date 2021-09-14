@@ -46,7 +46,8 @@ export const settings = {
 	haulRelayRatio: 2.6,
 	idealMergeSize: 1, // 1 to not merge
 	maxMergeSize: 16, // vs triangle explosions
-	attackGuards: 3,
+	minAttackGuards: 3,
+	splitDefenders: false,
 	minScouts: 1,
 	extraScouts: true,
 };

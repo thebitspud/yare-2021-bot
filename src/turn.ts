@@ -1,7 +1,9 @@
 import { BOT_VERSION, settings } from "./init";
 import * as Utils from "./utils";
 
-const enemy_spirits = Object.values(spirits).filter((s) => !my_spirits.includes(s));
+export const enemy_spirits = Object.values(spirits).filter(
+	(s) => !my_spirits.includes(s)
+);
 
 /* ALLY UNITS */
 
@@ -242,7 +244,7 @@ function getIdealDefenders(): number {
 		const allyDist = Utils.dist(Utils.midpoint(...myUnits), enemy_base);
 		const enemyDist = Utils.dist(Utils.nearest(base, enemyUnits), base);
 		if (allyDist + distBuffer > enemyDist) {
-			defenders += settings.attackGuards * (vsSquares ? 1.5 : 1);
+			defenders += settings.minAttackGuards * (vsSquares ? 1.5 : 1);
 		}
 	}
 
@@ -264,14 +266,12 @@ function getIdealScouts(): number {
 	const allScouts = !enemyOutpost && enemyRetakePower > outpost.energy / 2;
 	const fromIdleUnits = idleCount * (allScouts ? 1 : 0.5);
 
-	let fromEnemyPower =
-		((outpostEnemyPower + enemyRetakePower) / memory.mySize - outpost.energy) / 2;
-	if (enemyOutpost) fromEnemyPower = 0;
+	const enemyThreat = (outpostEnemyPower - outpost.energy / 2) * enemyShapePower;
+	let fromEnemyPower = enemyThreat / (memory.mySize * 10);
+	if (enemyOutpost || fromEnemyPower >= mySupply * 0.7) fromEnemyPower = 0;
 
 	// Returning the calculation that results in the best scout count
-	return Math.ceil(
-		Math.min(Math.max(fromTotalUnits, fromIdleUnits, fromEnemyPower), mySupply / 2)
-	);
+	return Math.ceil(Math.max(fromTotalUnits, fromIdleUnits, fromEnemyPower));
 }
 
 /** Returns whether the bot should attempt to retake an enemy outpost */
@@ -285,10 +285,8 @@ function shouldRetakeOutpost(): boolean {
 	const enemyDefense = 20 + outpost.energy / 2 + enemyDefendPower;
 	if (myCapacity <= enemyDefense) return false;
 
-	const energyReq = memory.centerStar.energy > 25 + enemyDefense / 4;
-	const supplyReq = mySupply < settings.allInSupply * 0.75;
 	// Attempt retake if center star has enough energy to be worth contesting
-	return energyReq || supplyReq;
+	return memory.centerStar.energy > 25 + enemyDefense / 4;
 }
 
 /** Returns whether idle and refueling units can energize from the center star */
@@ -336,6 +334,8 @@ function updateAttackStatus(): void {
 	} else if (memory.strategy === "retake") {
 		// End retake if outpost has been secured
 		if (allyOutpost && outpost.energy > memory.centerStar.energy / 2) return endRetake();
+		// End retake if star is drained
+		if (allyOutpost && memory.centerStar.energy < mySupply / 2) return endRetake();
 		// Retreat if enemy can locally overwhelm friendly units
 		if (enemyRetakePower * enemyShapePower * 0.75 > myEnergy) return retreat();
 	}

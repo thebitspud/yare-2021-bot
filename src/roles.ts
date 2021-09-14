@@ -109,13 +109,14 @@ function removeExtras() {
 	}
 }
 
-const canDefend = Turn.mySupply + (Turn.fastSqrRush ? 3 : 0) > Turn.enemyScoutPower;
+const canDefend =
+	Turn.mySupply + (Turn.fastSqrRush ? 3 : 0) > Turn.enemyScoutPower / memory.enemySize;
 const mustDefend = Turn.enemyAllIn && canDefend;
 const mustGroup =
 	Turn.enemyUnits.filter(
 		(e) =>
-			Utils.inRange(e, base, Turn.vsSquares ? 850 : 700) ||
-			Utils.inRange(e, memory.myStar, Turn.vsSquares ? 650 : 500)
+			Utils.inRange(e, base, Turn.fastSqrRush ? 850 : 700) ||
+			Utils.inRange(e, memory.myStar, 600)
 	).length >=
 	Turn.enemyUnits.length / 2;
 
@@ -195,7 +196,9 @@ function assignRoles() {
 	if (!Turn.isAttacking) {
 		while (register.scout.length + register.refuel.length < Turn.idealScouts) {
 			// Fill with idle units when possible
-			const validIdle = register.idle.filter((s) => Utils.energyRatio(s) > 0.5);
+			const validIdle = [...register.idle, ...register.relay].filter(
+				(s) => Utils.energyRatio(s) > 0.8
+			);
 			if (validIdle.length) {
 				setRole(Utils.nearest(memory.centerStar, register.idle), "scout");
 			} else break; // If cannot fill, break to prevent infinite loop
