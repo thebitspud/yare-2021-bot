@@ -43,7 +43,7 @@ export const settings = {
 	doRetakes: true,
 	retakeSupply: 51, // should be <= allInSupply
 	retakeGroupSize: 0.6, // float in [0, 1]
-	maxContestRatio: 0.7,
+	maxContestRatio: 0.75,
 	haulRelayRatio: 2.6,
 	idealMergeSize: 1, // 1 to not merge
 	maxMergeSize: 16, // vs triangle explosions

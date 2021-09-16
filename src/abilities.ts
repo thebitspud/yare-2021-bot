@@ -5,7 +5,8 @@ import * as Turn from "./turn";
 export function useMerge(s: CircleSpirit) {
 	const mustMerge = Turn.mustMerge.includes(s);
 	const shouldMerge =
-		enemy_base.shape === "triangles" && (s.mark === "attack" || mustMerge);
+		enemy_base.shape === "triangles" &&
+		((s.mark === "attack" && s.size <= settings.maxMergeSize) || mustMerge);
 
 	if (!shouldMerge) {
 		if (s.size > 1) s.divide();

@@ -1,6 +1,7 @@
 import * as Utils from "./utils";
 import * as Turn from "./turn";
 import "./roles";
+import { settings } from "./init";
 
 const canDefend =
 	Turn.mySupply + (Turn.fastSqrRush ? 3 : 0) > Turn.enemyScoutPower / memory.enemySize;
@@ -107,7 +108,9 @@ export function useEnergize(s: Spirit): void {
 			const readyToEnergize =
 				(memory.strategy !== "all-in" && energyRatio > 0.5) || outpost.energy <= 1;
 			const outpostAtRisk = outpost.energy < Math.max(20, outpostEnergizeThreat * 2 + 1);
-			const starHasEnergy = memory.centerStar.energy >= Turn.myCapacity - Turn.myEnergy;
+			const starHasEnergy =
+				memory.centerStar.energy >= Turn.myCapacity - Turn.myEnergy ||
+				Turn.mySupply < settings.allInSupply * 0.8;
 			const shouldEnergize =
 				memory.centerStar.energy / 2 >= outpost.energy ||
 				(outpost.energy > 400 && outpost.energy < 600);

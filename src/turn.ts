@@ -94,7 +94,11 @@ for (const e of enemyUnits) {
 	}
 
 	// Checking if the enemy is headed towards my side of the map
-	if (Utils.inRange(e, base, 1100) || Utils.inRange(e, memory.myStar, 1200)) {
+	const fastSqr = vsSquares && tick < 75;
+	if (
+		Utils.inRange(e, base, fastSqr ? 1200 : 1100) ||
+		Utils.inRange(e, memory.myStar, fastSqr ? 1300 : 1200)
+	) {
 		enemyScouts.push(e);
 		enemyScoutPower += e.energy * enemyShapePower;
 	}
@@ -108,8 +112,9 @@ for (const e of enemyUnits) {
 
 export const allyOutpost = outpost.control === this_player_id;
 export const enemyOutpost = outpost.control !== this_player_id && outpost.energy > 0;
-export const enemyAllIn = enemyScouts.length > 0.75 * enemyUnits.length;
-export const fastSqrRush = enemyAllIn && vsSquares && tick < 100;
+export const enemyAllIn =
+	enemyScouts.length > 0.75 * enemyUnits.length && 1.25 * enemyScoutPower > myCapacity;
+export const fastSqrRush = enemyAllIn && vsSquares && tick < 80;
 export let isAttacking = ["rally", "retake", "all-in"].includes(memory.strategy);
 export const refuelAtCenter = canRefuelCenter();
 
@@ -121,11 +126,12 @@ export let mustMerge: CircleSpirit[] = [];
 const sendScout = settings.extraScouts || settings.minScouts;
 if (tick > (vsSquares ? 50 : 30) && !enemyOutpost && sendScout) idealScouts++;
 const powerRatio = myEnergy / (enemyEnergy * enemyShapePower);
-const shouldRetake = shouldRetakeOutpost() && mySupply >= settings.retakeSupply;
+const shouldRetake = shouldRetakeOutpost();
+const canStartRetake = shouldRetake && mySupply >= settings.retakeSupply;
 const shouldAllIn =
 	mySupply >= settings.allInSupply ||
 	myCapacity > enemy_base.energy * 0.75 + enemyCapacity * enemyShapePower * 2.5;
-const readyToAttack = shouldRetake || shouldAllIn;
+const readyToAttack = canStartRetake || shouldAllIn;
 if (isAttacking) updateAttackStatus();
 
 // Starting an attack on the enemy base or outpost
@@ -194,7 +200,7 @@ if (memory.strategy === "rally") {
 	// Waiting until units are grouped and ready before issuing the final attack order
 	if (starReq && groupReq) {
 		memory.retakeActive = shouldRetake;
-		memory.strategy = memory.retakeActive ? "retake" : "all-in";
+		memory.strategy = shouldRetake ? "retake" : "all-in";
 		// Do one final grouping action when ready
 		rallyPoint = Utils.midpoint(...attackers);
 		doConverge = true;
@@ -207,7 +213,7 @@ isAttacking = ["rally", "retake", "all-in"].includes(memory.strategy);
 
 /** Returns the optimal number of workers based on the current game state */
 function getMaxWorkers(): number {
-	const supplyCap = shouldRetakeOutpost() ? settings.retakeSupply : settings.allInSupply;
+	const supplyCap = shouldRetake ? settings.retakeSupply : settings.allInSupply;
 	// If being all-inned, harvest as much as possible before defending
 	if (enemyAllIn || (tick < 30 && vsSquares)) return supplyCap;
 
@@ -246,6 +252,11 @@ function getIdealDefenders(): number {
 		if (allyDist + distBuffer > enemyDist) defenders += settings.minAttackGuards;
 	}
 
+	if (invaders.near.length) {
+		defenders *= 1.25;
+		defenders += 1;
+	}
+
 	return Math.ceil(defenders);
 }
 
@@ -264,10 +275,10 @@ function getIdealScouts(): number {
 	const allScouts = !enemyOutpost && enemyRetakePower > outpost.energy / 2;
 	const fromIdleUnits = idleCount * (allScouts ? 1 : 0.5);
 
-	const enemyThreat = (outpostEnemyPower - outpost.energy / 2) * enemyShapePower;
+	const enemyThreat = (outpostEnemyPower - outpost.energy * 0.4) * enemyShapePower;
 	let fromEnemyPower = enemyThreat / (memory.mySize * 10);
-	if (enemyOutpost || fromEnemyPower >= mySupply * settings.maxContestRatio)
-		fromEnemyPower = 0;
+	if (enemyOutpost) fromEnemyPower = 0;
+	if (enemyThreat >= myEnergy * settings.maxContestRatio) fromEnemyPower = 0;
 
 	// Returning the calculation that results in the best scout count
 	return Math.ceil(Math.max(fromTotalUnits, fromIdleUnits, fromEnemyPower));
@@ -279,9 +290,8 @@ function shouldRetakeOutpost(): boolean {
 	if (!settings.doRetakes) return false;
 
 	// Don't attempt retake if it is likely to fail
-	const enemyDefendPower =
-		((enemyCapacity + outpostEnemyPower * 1.25) / 2) * enemyShapePower;
-	const enemyDefense = 20 + outpost.energy / 2 + enemyDefendPower;
+	const enemyDefendPower = ((enemyCapacity + outpostEnemyPower) / 2) * enemyShapePower;
+	const enemyDefense = 10 + outpost.energy / 2 + enemyDefendPower;
 	if (myCapacity <= enemyDefense) return false;
 
 	// Attempt retake if center star has enough energy to be worth contesting
@@ -331,12 +341,15 @@ function updateAttackStatus(): void {
 		// Retreat if bot can no longer win
 		if (powerRatio < 0.5 && capacityRatio < 1) return retreat();
 	} else if (memory.strategy === "retake") {
-		// End retake if outpost has been secured
-		if (allyOutpost && outpost.energy > memory.centerStar.energy / 2) return endRetake();
+		const shouldEnergize =
+			memory.centerStar.energy / 2 >= outpost.energy ||
+			(outpost.energy > 400 && outpost.energy < 600);
+		// End retake if outpost has been comfortably secured
+		if (allyOutpost && (!shouldEnergize || outpost.energy >= 590)) return endRetake();
 		// End retake if star is drained
 		if (allyOutpost && memory.centerStar.energy < mySupply / 2) return endRetake();
 		// Retreat if enemy can locally overwhelm friendly units
-		if (enemyRetakePower * enemyShapePower * 0.75 > myEnergy) return retreat();
+		if (enemyRetakePower * enemyShapePower * 0.8 > myEnergy) return retreat();
 	}
 }
 

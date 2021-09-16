@@ -94,8 +94,8 @@ export function findMove(s: Spirit): void {
 				if (Utils.inRange(e, base)) distFactor = Turn.enemyAllIn ? 0.25 : 0.5;
 				else if (Utils.inRange(e, base, 400)) distFactor = Turn.enemyAllIn ? 0.5 : 1;
 				else if (Turn.allyOutpost) {
-					if (Utils.inRange(e, outpost)) distFactor = 0.8;
-					else if (Utils.inRange(e, outpost, 400)) distFactor = 0.9;
+					if (Utils.inRange(e, outpost)) distFactor = 0.6;
+					else if (Utils.inRange(e, outpost, 400)) distFactor = 0.8;
 				}
 				return e.energy * distFactor;
 			})
@@ -103,7 +103,9 @@ export function findMove(s: Spirit): void {
 
 	const groupPower = s.sight.friends_beamable
 		.map((id) => spirits[id])
-		.filter((t) => unitsInDanger.includes(t) || Utils.inRange(s, t, 30))
+		.filter(
+			(t) => unitsInDanger.includes(t) || Utils.inRange(s, t, Turn.vsTriangles ? 40 : 30)
+		)
 		.map((t) => t.energy)
 		.reduce((acc, n) => acc + n, 0);
 

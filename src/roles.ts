@@ -115,7 +115,7 @@ const mustDefend = Turn.enemyAllIn && canDefend;
 const mustGroup =
 	Turn.enemyUnits.filter(
 		(e) =>
-			Utils.inRange(e, base, Turn.fastSqrRush ? 850 : 700) ||
+			Utils.inRange(e, base, Turn.fastSqrRush ? 830 : 700) ||
 			Utils.inRange(e, memory.myStar, 600)
 	).length >=
 	Turn.enemyUnits.length / 2;
