@@ -32,7 +32,12 @@ if (memory.init !== BOT_VERSION) {
 		centerToBase: Utils.nextPosition(memory.centerStar, base),
 		centerToOutpost: Utils.lerp(memory.centerStar, outpost),
 		outpostAntipode: Utils.nextPosition(memory.centerStar, outpost, -199),
-		enemyBaseAntipode: Utils.nextPosition(enemy_base, memory.enemyStar, -399),
+		sideBlocker: Utils.nextPosition(enemy_base, memory.enemyStar, -399),
+		backBlocker: Utils.nextPosition(
+			enemy_base,
+			Utils.midpoint(memory.enemyStar, memory.centerStar, outpost),
+			-399
+		),
 	};
 }
 
@@ -48,7 +53,7 @@ export const settings = {
 	idealMergeSize: 1, // 1 to not merge
 	maxMergeSize: 16, // vs triangle explosions
 	minAttackGuards: 3,
-	splitDefenders: false,
+	minExplodeCount: 4,
 	minScouts: 1,
 	extraScouts: true,
 };

@@ -12,8 +12,17 @@ export const myUnits = my_spirits
 	.filter((s) => s.hp > 0)
 	.sort((s1, s2) => s2.energy - s1.energy)
 	.sort((s1, s2) => s1.size - s2.size);
-export const blockerScout =
-	Utils.nearest(memory.loci.enemyBaseAntipode, myUnits) ?? my_spirits[0];
+
+// Choosing blocker units
+export const backBlockerScout =
+	Utils.nearest(memory.loci.backBlocker, myUnits) ?? my_spirits[0];
+const potentialBlockers = myUnits.filter((s) =>
+	Utils.inRange(s, memory.loci.backBlocker, 650)
+).length
+	? myUnits.filter((s) => s !== backBlockerScout)
+	: myUnits;
+export const sideBlockerScout =
+	Utils.nearest(memory.loci.sideBlocker, potentialBlockers) ?? my_spirits[0];
 
 export let myEnergy = 0;
 export let myCapacity = 0;
@@ -34,7 +43,7 @@ export const targetEnemy =
 
 export const vsSquares = enemy_base.shape === "squares";
 export const vsTriangles = enemy_base.shape === "triangles";
-export const enemyShapePower = vsSquares ? 0.7 : vsTriangles ? 0.85 : 1;
+export const enemyShapePower = vsSquares ? 0.7 : vsTriangles ? 0.83 : 1;
 
 /**
  * NOTE: All units in <near> are also in <med> and <far>
@@ -113,8 +122,8 @@ for (const e of enemyUnits) {
 export const allyOutpost = outpost.control === this_player_id;
 export const enemyOutpost = outpost.control !== this_player_id && outpost.energy > 0;
 export const enemyAllIn =
-	enemyScouts.length > 0.75 * enemyUnits.length && 1.25 * enemyScoutPower > myCapacity;
-export const fastSqrRush = enemyAllIn && vsSquares && tick < 80;
+	enemyScouts.length > 0.75 * enemyUnits.length && 1.5 * enemyScoutPower > myCapacity;
+export const fastSqrRush = enemyAllIn && vsSquares && tick <= 90;
 export let isAttacking = ["rally", "retake", "all-in"].includes(memory.strategy);
 export const refuelAtCenter = canRefuelCenter();
 
@@ -123,8 +132,8 @@ export let idealDefenders = getIdealDefenders();
 export let idealScouts = getIdealScouts();
 export let mustMerge: CircleSpirit[] = [];
 
-const sendScout = settings.extraScouts || settings.minScouts;
-if (tick > (vsSquares ? 50 : 30) && !enemyOutpost && sendScout) idealScouts++;
+const extraScout = settings.extraScouts || settings.minScouts;
+if (tick > (vsSquares ? 50 : 25) && extraScout) idealScouts++;
 const powerRatio = myEnergy / (enemyEnergy * enemyShapePower);
 const shouldRetake = shouldRetakeOutpost();
 const canStartRetake = shouldRetake && mySupply >= settings.retakeSupply;
@@ -228,11 +237,11 @@ function getMaxWorkers(): number {
 	if (canHarvestAll && !canHarvestCenter) return supplyCap;
 
 	// If far away from being able to attack, let star grow a bit
-	if (mySupply < supplyCap - 25 && memory.myStar.energy < 900) energyRegenCap -= 1;
+	if (mySupply < supplyCap - 25 && memory.myStar.energy < 950) energyRegenCap -= 1;
 
 	// Can over-harvest if star has sufficient energy and nearing attack supply
-	if (memory.myStar.energy > (supplyCap - mySupply) * 10) energyRegenCap += 1;
-	if (memory.myStar.energy > (supplyCap - mySupply) * 20) energyRegenCap += 1;
+	if (memory.myStar.energy > newUnitCost / 2) energyRegenCap += 1;
+	if (memory.myStar.energy > newUnitCost) energyRegenCap += 1;
 	if (mySupply >= supplyCap - 12 && !canHarvestCenter) energyRegenCap += 2;
 
 	// Calculate ideal worker count
@@ -246,16 +255,13 @@ function getIdealDefenders(): number {
 
 	// Assigning additional defenders when attacking to prevent counter-attacks
 	if (isAttacking && enemySupply > 0) {
-		const distBuffer = (allyOutpost ? 100 : 250) + (vsSquares ? 250 : 0);
+		const distBuffer = (enemyOutpost ? 250 : 100) + (vsSquares ? 250 : 0);
 		const allyDist = Utils.dist(Utils.midpoint(...myUnits), enemy_base);
 		const enemyDist = Utils.dist(Utils.nearest(base, enemyUnits), base);
 		if (allyDist + distBuffer > enemyDist) defenders += settings.minAttackGuards;
 	}
 
-	if (invaders.near.length) {
-		defenders *= 1.25;
-		defenders += 1;
-	}
+	if (invaders.near.length) defenders += 1;
 
 	return Math.ceil(defenders);
 }
@@ -275,10 +281,17 @@ function getIdealScouts(): number {
 	const allScouts = !enemyOutpost && enemyRetakePower > outpost.energy / 2;
 	const fromIdleUnits = idleCount * (allScouts ? 1 : 0.5);
 
-	const enemyThreat = (outpostEnemyPower - outpost.energy * 0.4) * enemyShapePower;
+	const enemyThreat = (outpostEnemyPower - outpost.energy / 3) * enemyShapePower;
+	const defendEnergy = myUnits
+		.filter((s) => Utils.inRange(s, outpost, 400))
+		.map((s) => s.energy)
+		.reduce((acc, n) => acc + n, 0);
+	const maxContestEnergy = myEnergy * settings.maxContestRatio;
+	const defendStrength = (defendEnergy + Math.max(defendEnergy, maxContestEnergy)) / 2;
+
 	let fromEnemyPower = enemyThreat / (memory.mySize * 10);
 	if (enemyOutpost) fromEnemyPower = 0;
-	if (enemyThreat >= myEnergy * settings.maxContestRatio) fromEnemyPower = 0;
+	else if (enemyThreat > defendStrength) fromEnemyPower = 0;
 
 	// Returning the calculation that results in the best scout count
 	return Math.ceil(Math.max(fromTotalUnits, fromIdleUnits, fromEnemyPower));
@@ -290,12 +303,12 @@ function shouldRetakeOutpost(): boolean {
 	if (!settings.doRetakes) return false;
 
 	// Don't attempt retake if it is likely to fail
-	const enemyDefendPower = ((enemyCapacity + outpostEnemyPower) / 2) * enemyShapePower;
+	const enemyDefendPower = ((enemyEnergy + outpostEnemyPower) / 2) * enemyShapePower;
 	const enemyDefense = 10 + outpost.energy / 2 + enemyDefendPower;
 	if (myCapacity <= enemyDefense) return false;
 
 	// Attempt retake if center star has enough energy to be worth contesting
-	return memory.centerStar.energy > 25 + enemyDefense / 4;
+	return memory.centerStar.energy > 25 + enemyDefendPower / 4;
 }
 
 /** Returns whether idle and refueling units can energize from the center star */

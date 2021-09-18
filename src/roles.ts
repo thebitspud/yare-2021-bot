@@ -59,7 +59,11 @@ function removeExtras() {
 
 		// Scouts may attempt to refuel from the center at a higher cutoff
 		// Except the first one which should always be attempting to block
-		if (s.mark === "scout" && s !== Turn.blockerScout) {
+		if (
+			s.mark === "scout" &&
+			s !== Turn.sideBlockerScout &&
+			s !== Turn.backBlockerScout
+		) {
 			if (energyRatio < 0.5 && memory.centerStar.energy > 0) {
 				setRole(s, "refuel");
 				continue;
@@ -114,9 +118,7 @@ const canDefend =
 const mustDefend = Turn.enemyAllIn && canDefend;
 const mustGroup =
 	Turn.enemyUnits.filter(
-		(e) =>
-			Utils.inRange(e, base, Turn.fastSqrRush ? 830 : 700) ||
-			Utils.inRange(e, memory.myStar, 600)
+		(e) => Utils.inRange(e, base, 850) || Utils.inRange(e, memory.myStar, 600)
 	).length >=
 	Turn.enemyUnits.length / 2;
 
@@ -127,7 +129,8 @@ function assignRoles() {
 			// When attacking, only other valid roles are defend and refuel
 			const canBeAttacker =
 				!["defend", "attack", "refuel"].includes(s.mark) &&
-				(s !== Turn.blockerScout || !memory.retakeActive || Turn.allyOutpost);
+				s !== Turn.backBlockerScout &&
+				(s !== Turn.sideBlockerScout || (!memory.retakeActive && Turn.allyOutpost));
 			const shouldRefuel = memory.strategy === "rally" && Utils.energyRatio(s) < 1;
 			if (canBeAttacker) setRole(s, shouldRefuel ? "refuel" : "attack");
 		}
@@ -182,6 +185,8 @@ function assignRoles() {
 		}
 
 		for (const s of Turn.myUnits) {
+			if (s.mark === "relay" && !mustGroup) continue;
+
 			if (!excludedRoles.includes(s.mark) && !Utils.inRange(s, enemy_base, 400)) {
 				setRole(s, Utils.energyRatio(s) < refuelCutoff ? "refuel" : "defend");
 			}

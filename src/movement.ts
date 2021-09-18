@@ -10,6 +10,28 @@ const register = Roles.register;
 let defenderRally = Utils.lerp(memory.myStar, memory.loci.baseToCenter, 0.6);
 const defendMidpoint = Utils.midpoint(...register.defend);
 
+const starSide =
+	Utils.dist(Turn.targetEnemy, memory.myStar) + 50 < Utils.dist(Turn.targetEnemy, base);
+
+if (Turn.enemyAllIn) {
+	// If enemy is all-inning, group up near friendly structure
+	defenderRally = Utils.nextPosition(
+		starSide ? memory.myStar : base,
+		Utils.lerp(defendMidpoint, Turn.targetEnemy, 0.25),
+		starSide ? 150 : 120
+	);
+} else if (Turn.invaders.far.length) {
+	const spacing =
+		Math.min(Utils.dist(Turn.targetEnemy, starSide ? memory.myStar : base) / 2, 200) + 20;
+
+	// Keep defenders within range of friendly structures
+	defenderRally = Utils.nextPosition(
+		starSide ? memory.myStar : base,
+		Utils.lerp(defendMidpoint, Turn.targetEnemy),
+		spacing
+	);
+}
+
 const scoutMidpoint = Utils.midpoint(...register.scout);
 const nearestEnemyRetaker =
 	Utils.nearest(
@@ -25,40 +47,16 @@ const scoutRally = Utils.nextPosition(
 	Utils.dist(nearestEnemyRetaker, enemyNearestTo) / 2
 );
 
-const starSide =
-	Utils.dist(Turn.targetEnemy, memory.myStar) < Utils.dist(Turn.targetEnemy, base);
-
-if (Turn.enemyAllIn) {
-	// If enemy is all-inning, group up near friendly structure
-	defenderRally = Utils.nextPosition(
-		starSide ? memory.myStar : base,
-		Utils.lerp(defendMidpoint, Turn.targetEnemy, 0.25),
-		starSide ? 150 : 120
-	);
-} else if (Turn.invaders.far.length) {
-	const constraintNeeded =
-		!Utils.inRange(Turn.targetEnemy, base, 400) &&
-		!Utils.inRange(Turn.targetEnemy, memory.myStar, 400);
-	if (Turn.vsSquares && constraintNeeded) {
-		// Keep defenders within range of friendly structures vs squares
-		defenderRally = Utils.nextPosition(
-			starSide ? memory.myStar : base,
-			Utils.lerp(defendMidpoint, Turn.targetEnemy),
-			220
-		);
-	} else {
-		// Move to intercept the target enemy
-		defenderRally = Utils.nextPosition(
-			Turn.targetEnemy,
-			Utils.lerp(defendMidpoint, base)
-		);
-	}
-}
-
 const scoutPower = Turn.myUnits
-	.filter((s) => ["attack", "scout"].includes(s.mark))
+	.filter(
+		(s) =>
+			["attack", "scout", "refuel"].includes(s.mark) &&
+			Utils.inRange(s, outpost, 650) &&
+			s !== Turn.backBlockerScout &&
+			s !== Turn.sideBlockerScout
+	)
 	.map((s) => s.energy)
-	.reduce((acc, n) => acc + n, -Turn.blockerScout.energy);
+	.reduce((acc, n) => acc + n, 0);
 
 const enemyBasePower = enemy_base.sight.friends
 	.map((id) => spirits[id].energy)
@@ -66,8 +64,8 @@ const enemyBasePower = enemy_base.sight.friends
 
 // Positive if ally units are stronger, negative if enemy stronger
 let outpostDisparity = scoutPower - Turn.outpostEnemyPower;
-if (Turn.enemyOutpost) outpostDisparity -= Math.max(outpost.energy / 2, 20);
-else if (Turn.allyOutpost) outpostDisparity += Math.max(outpost.energy / 2, 20);
+if (Turn.enemyOutpost) outpostDisparity -= 10 + outpost.energy / 2;
+else if (Turn.allyOutpost) outpostDisparity += 10 + outpost.energy / 2;
 
 // Units that have a chance of engaging the enemy next turn
 const unitsInDanger = Turn.myUnits.filter((s) => {
@@ -97,6 +95,7 @@ export function findMove(s: Spirit): void {
 					if (Utils.inRange(e, outpost)) distFactor = 0.6;
 					else if (Utils.inRange(e, outpost, 400)) distFactor = 0.8;
 				}
+				// if (Turn.isAttacking) distFactor *= 0.8;
 				return e.energy * distFactor;
 			})
 			.reduce((acc, n) => acc + n, 0) * Turn.enemyShapePower;
@@ -119,7 +118,7 @@ export function findMove(s: Spirit): void {
 	// Not filtering out <0 energy units because cannot predict enemy energy transfers
 	const explodeThreats = s.sight.enemies_beamable
 		.map((id) => spirits[id])
-		.filter((e) => e.sight.enemies_beamable.length >= 3);
+		.filter((e) => e.sight.enemies_beamable.length >= settings.minExplodeCount);
 
 	if (Turn.vsTriangles && explodeThreats.length) {
 		const escapeVec = Utils.midpoint(
@@ -162,9 +161,12 @@ export function findMove(s: Spirit): void {
 	// Role specific movement commands
 	switch (s.mark) {
 		case "attack":
-			if (memory.strategy === "rally" || Turn.doConverge) {
+			if (memory.strategy === "rally") {
 				// If rallying, move to attacker rally position
 				return safeMove(s, Turn.rallyPoint);
+			} else if (Turn.doConverge) {
+				// Ignore outpost range if doing converge
+				return s.move(Turn.rallyPoint);
 			} else if (memory.strategy === "all-in") {
 				// If all-in, move towards enemy base
 				return safeMove(s, Utils.nextPosition(enemy_base, s));
@@ -177,14 +179,20 @@ export function findMove(s: Spirit): void {
 			// Wait to intercept at the computed defender rally point
 			return safeMove(s, defenderRally);
 		case "scout":
-			if (!outpostSafe || Turn.blockerScout === s) {
-				// Pressure enemy base from opposite direction of star if enemy dominant at outpost
+			if (!outpostSafe || Turn.sideBlockerScout === s || Turn.backBlockerScout === s) {
+				// Determining whether to block from the back or side
+				const towards =
+					Turn.sideBlockerScout !== s && Turn.backBlockerScout === s
+						? loci.backBlocker
+						: loci.sideBlocker;
+
+				// Pressure enemy base from outside outpost range
 				if (allyPower > enemyBasePower + enemy_base.energy / 2) {
 					// If can deal HP damage, attack enemy base
 					return safeMove(s, Utils.nextPosition(enemy_base, s), 601);
 				} else {
 					// Otherwise, attempt to block enemy production
-					return safeMove(s, loci.enemyBaseAntipode, 601);
+					return safeMove(s, towards, 601);
 				}
 			} else {
 				const outpostLow = outpost.energy < Math.max(20, Turn.outpostEnemyPower);
@@ -192,7 +200,8 @@ export function findMove(s: Spirit): void {
 					outpostLow && energyRatio > 0.5 && !Utils.inRange(s, outpost);
 				const contestOutpost =
 					outpost.energy === 0 ||
-					(Turn.blockerScout !== s &&
+					(Turn.sideBlockerScout !== s &&
+						Turn.backBlockerScout !== s &&
 						(Turn.enemyRetakePower > 0 || Turn.outpostEnemyPower > scoutPower));
 				if (Turn.enemyRetakePower) {
 					// If enemy units in outpost range, move to intercept
@@ -268,7 +277,7 @@ export function findMove(s: Spirit): void {
 				}
 			} else {
 				// Else just wait for an assignment at the default defender rally point
-				return safeMove(s, Utils.lerp(base, defenderRally, 0.7));
+				return safeMove(s, defenderRally);
 			}
 	}
 }
