@@ -6,30 +6,31 @@ import * as Roles from "./roles";
 const loci = memory.loci;
 const register = Roles.register;
 
-// Where defenders should group up at, based on current game state
-let defenderRally = Utils.lerp(memory.myStar, memory.loci.baseToCenter, 0.6);
-const defendMidpoint = Utils.midpoint(...register.defend);
+const defenderRally = getDefenderRally(Turn.nearestEnemy);
 
-const starSide =
-	Utils.dist(Turn.targetEnemy, memory.myStar) + 50 < Utils.dist(Turn.targetEnemy, base);
+/** Where to group up at to intercept given target */
+function getDefenderRally(target: Spirit): Position {
+	const starSide = Utils.dist(target, memory.myStar) + 50 < Utils.dist(target, base);
+	const objective = starSide ? memory.myStar : base;
+	const far = Turn.invaders.far;
 
-if (Turn.enemyAllIn) {
-	// If enemy is all-inning, group up near friendly structure
-	defenderRally = Utils.nextPosition(
-		starSide ? memory.myStar : base,
-		Utils.lerp(defendMidpoint, Turn.targetEnemy, 0.25),
-		starSide ? 150 : 120
-	);
-} else if (Turn.invaders.far.length) {
-	const spacing =
-		Math.min(Utils.dist(Turn.targetEnemy, starSide ? memory.myStar : base) / 2, 200) + 20;
+	if (Turn.enemyAllIn) {
+		const defendMidpoint = Utils.midpoint(...register.defend);
+		const enemyMidpoint = far.length ? Utils.midpoint(...far) : target;
+		// If enemy is all-inning, group all units at same spot
+		return Utils.nextPosition(
+			objective,
+			Utils.lerp(defendMidpoint, enemyMidpoint, 0.33),
+			starSide ? 150 : 120
+		);
+	} else if (far.includes(target)) {
+		// Keep defenders grouped up within range of friendly structures
+		const spacing = Math.min(Utils.dist(target, objective) / 2, 200) + 20;
+		return Utils.nextPosition(objective, target, spacing);
+	}
 
-	// Keep defenders within range of friendly structures
-	defenderRally = Utils.nextPosition(
-		starSide ? memory.myStar : base,
-		Utils.lerp(defendMidpoint, Turn.targetEnemy),
-		spacing
-	);
+	// Default grouping position
+	return Utils.lerp(memory.myStar, memory.loci.baseToCenter, 0.6);
 }
 
 const scoutMidpoint = Utils.midpoint(...register.scout);
@@ -90,7 +91,7 @@ export function findMove(s: Spirit): void {
 			.map((e) => {
 				let distFactor = 1;
 				if (Utils.inRange(e, base)) distFactor = Turn.enemyAllIn ? 0.25 : 0.5;
-				else if (Utils.inRange(e, base, 400)) distFactor = Turn.enemyAllIn ? 0.5 : 1;
+				else if (Utils.inRange(e, base, 400)) distFactor = Turn.enemyAllIn ? 0.6 : 1;
 				else if (Turn.allyOutpost) {
 					if (Utils.inRange(e, outpost)) distFactor = 0.6;
 					else if (Utils.inRange(e, outpost, 400)) distFactor = 0.8;
@@ -106,7 +107,7 @@ export function findMove(s: Spirit): void {
 			(t) => unitsInDanger.includes(t) || Utils.inRange(s, t, Turn.vsTriangles ? 40 : 30)
 		)
 		.map((t) => t.energy)
-		.reduce((acc, n) => acc + n, 0);
+		.reduce((acc, n) => acc + n, s.energy);
 
 	const allyPower = s.sight.friends_beamable
 		.map((id) => spirits[id])
@@ -153,7 +154,10 @@ export function findMove(s: Spirit): void {
 			// Chase towards vulnerable enemy units in range
 			if (enemyTargets.length) {
 				if (settings.debug) s.shout("chase");
-				return safeMove(s, Utils.lowestEnergy(enemyTargets));
+				if (groupPower - dangerRating > (outpost.energy >= 500 ? 40 : 10)) {
+					// Can chase into outpost range if power difference is high enough
+					return s.move(Utils.lowestEnergy(enemyTargets).position);
+				} else return safeMove(s, Utils.lowestEnergy(enemyTargets));
 			}
 		}
 	}
@@ -176,8 +180,14 @@ export function findMove(s: Spirit): void {
 				else return s.move(Utils.nextPosition(outpost, s));
 			}
 		case "defend":
-			// Wait to intercept at the computed defender rally point
-			return safeMove(s, defenderRally);
+			if (!Turn.enemyAllIn && Roles.defenseMatches.has(s)) {
+				// Move towards specified target enemy
+				const targetEnemy = <Spirit>Roles.defenseMatches.get(s);
+				return safeMove(s, getDefenderRally(targetEnemy));
+			} else {
+				// Wait to intercept at default defender rally point
+				return safeMove(s, defenderRally);
+			}
 		case "scout":
 			if (!outpostSafe || Turn.sideBlockerScout === s || Turn.backBlockerScout === s) {
 				// Determining whether to block from the back or side

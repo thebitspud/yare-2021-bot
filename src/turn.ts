@@ -38,11 +38,12 @@ for (const s of myUnits) {
 /* ENEMY UNITS */
 
 export const enemyUnits = enemy_spirits.filter((e) => e.hp > 0);
-export const targetEnemy =
+export const nearestEnemy =
 	Utils.nearest(memory.loci.baseToStar, enemyUnits) ?? enemy_spirits[0];
 
 export const vsSquares = enemy_base.shape === "squares";
 export const vsTriangles = enemy_base.shape === "triangles";
+export const vsCircles = enemy_base.shape === "circles";
 export const enemyShapePower = vsSquares ? 0.7 : vsTriangles ? 0.83 : 1;
 
 /**
@@ -103,11 +104,7 @@ for (const e of enemyUnits) {
 	}
 
 	// Checking if the enemy is headed towards my side of the map
-	const fastSqr = vsSquares && tick < 75;
-	if (
-		Utils.inRange(e, base, fastSqr ? 1200 : 1100) ||
-		Utils.inRange(e, memory.myStar, fastSqr ? 1300 : 1200)
-	) {
+	if (Utils.inRange(e, base, 1200) || Utils.inRange(e, memory.myStar, 1300)) {
 		enemyScouts.push(e);
 		enemyScoutPower += e.energy * enemyShapePower;
 	}
@@ -122,7 +119,7 @@ for (const e of enemyUnits) {
 export const allyOutpost = outpost.control === this_player_id;
 export const enemyOutpost = outpost.control !== this_player_id && outpost.energy > 0;
 export const enemyAllIn =
-	enemyScouts.length > 0.75 * enemyUnits.length && 1.5 * enemyScoutPower > myCapacity;
+	enemyScouts.length > 0.75 * enemyUnits.length && 2 * enemyScoutPower > myCapacity;
 export const fastSqrRush = enemyAllIn && vsSquares && tick <= 90;
 export let isAttacking = ["rally", "retake", "all-in"].includes(memory.strategy);
 export const refuelAtCenter = canRefuelCenter();
@@ -139,7 +136,8 @@ const shouldRetake = shouldRetakeOutpost();
 const canStartRetake = shouldRetake && mySupply >= settings.retakeSupply;
 const shouldAllIn =
 	mySupply >= settings.allInSupply ||
-	myCapacity > enemy_base.energy * 0.75 + enemyCapacity * enemyShapePower * 2.5;
+	myCapacity > enemy_base.energy * 0.75 + enemyCapacity * enemyShapePower * 2.5 ||
+	(enemyOutpost && outpost.energy > 500 && !!invaders.near.length);
 const readyToAttack = canStartRetake || shouldAllIn;
 if (isAttacking) updateAttackStatus();
 

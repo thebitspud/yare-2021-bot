@@ -13,6 +13,9 @@ export const register: { [key in MarkState]: Spirit[] } = {
 	refuel: [],
 };
 
+/** keys: my units, values: enemy units */
+export const defenseMatches = new Map<Spirit, Spirit>();
+
 for (const s of Turn.myUnits) register[s.mark].push(s);
 const workerRatio = settings.haulRelayRatio;
 
@@ -34,6 +37,7 @@ export function update(): void {
 	removeExtras();
 	assignRoles();
 	optimizeWorkers();
+	if (register.defend.length) matchDefenders();
 }
 
 const groupDist = Utils.dist(
@@ -64,7 +68,8 @@ function removeExtras() {
 			s !== Turn.sideBlockerScout &&
 			s !== Turn.backBlockerScout
 		) {
-			if (energyRatio < 0.5 && memory.centerStar.energy > 0) {
+			const minScoutRatio = Turn.vsSquares ? 0.5 : 0.8;
+			if (energyRatio < minScoutRatio && memory.centerStar.energy > 0) {
 				setRole(s, "refuel");
 				continue;
 			}
@@ -114,7 +119,8 @@ function removeExtras() {
 }
 
 const canDefend =
-	Turn.mySupply + (Turn.fastSqrRush ? 3 : 0) > Turn.enemyScoutPower / memory.enemySize;
+	Turn.mySupply + (Turn.fastSqrRush ? 3 : 0) > Turn.enemyScoutPower / memory.enemySize ||
+	Turn.invaders.far.length > Turn.enemyUnits.length / 2;
 const mustDefend = Turn.enemyAllIn && canDefend;
 const mustGroup =
 	Turn.enemyUnits.filter(
@@ -127,10 +133,11 @@ function assignRoles() {
 	if (Turn.isAttacking) {
 		for (const s of Turn.myUnits) {
 			// When attacking, only other valid roles are defend and refuel
-			const canBeAttacker =
-				!["defend", "attack", "refuel"].includes(s.mark) &&
-				s !== Turn.backBlockerScout &&
-				(s !== Turn.sideBlockerScout || (!memory.retakeActive && Turn.allyOutpost));
+			const isBlocker = s === Turn.backBlockerScout || s === Turn.sideBlockerScout;
+			const groupAll = Utils.inRange(enemy_base, Utils.midpoint(...Turn.myUnits), 900);
+			const attackRoles: MarkState[] = ["defend", "attack", "refuel"];
+			const canBeAttacker = !attackRoles.includes(s.mark) && (!isBlocker || groupAll);
+
 			const shouldRefuel = memory.strategy === "rally" && Utils.energyRatio(s) < 1;
 			if (canBeAttacker) setRole(s, shouldRefuel ? "refuel" : "attack");
 		}
@@ -141,7 +148,7 @@ function assignRoles() {
 		// Try to fill with idle units first
 		const validIdle = register.idle.filter((s) => Utils.energyRatio(s) > 0.5);
 		if (validIdle.length) {
-			setRole(Utils.nearest(Turn.targetEnemy, validIdle), "defend");
+			setRole(Utils.nearest(Turn.nearestEnemy, validIdle), "defend");
 			continue;
 		}
 
@@ -150,7 +157,7 @@ function assignRoles() {
 			(s) => Utils.energyRatio(s) > 0.5
 		);
 		if (validWorkers.length) {
-			setRole(Utils.nearest(Turn.targetEnemy, validWorkers), "defend");
+			setRole(Utils.nearest(Turn.nearestEnemy, validWorkers), "defend");
 			continue;
 		}
 
@@ -165,7 +172,7 @@ function assignRoles() {
 			);
 		});
 		if (validCombat.length) {
-			setRole(Utils.nearest(Turn.targetEnemy, validCombat), "defend");
+			setRole(Utils.nearest(Turn.nearestEnemy, validCombat), "defend");
 		} else break; // If cannot fill, break to prevent infinite loop
 	}
 
@@ -238,6 +245,36 @@ function optimizeWorkers() {
 			setRole(Utils.nearest(base, register.haul), "relay");
 		}
 	}
+}
+
+/** Assigns defenders to match enemy threats accordingly */
+function matchDefenders() {
+	// Sort enemies by adjusted distance
+	const enemyThreats = Turn.invaders.med.sort(distDiff);
+	// Clone defender array
+	let availableSpirits = [...register.defend];
+
+	for (const e of enemyThreats) {
+		let matchEnergy = 0;
+
+		// Assign defenders to a given enemy until out of defenders
+		// or defenders have more energy than enemy
+		while (matchEnergy <= e.energy && availableSpirits.length) {
+			const nearestDefender = Utils.nearest(e, availableSpirits);
+			availableSpirits = availableSpirits.filter((s) => s !== nearestDefender);
+			defenseMatches.set(nearestDefender, e);
+			matchEnergy += nearestDefender.energy;
+		}
+
+		if (!availableSpirits) break;
+	}
+}
+
+/** Sorts enemies from highest to lowest threat based on distance to my base/star */
+function distDiff(s1: Spirit, s2: Spirit) {
+	const s1Dist = Math.min(Utils.dist(s1, base), Utils.dist(s1, memory.myStar) + 50);
+	const s2Dist = Math.min(Utils.dist(s2, base), Utils.dist(s2, memory.myStar) + 50);
+	return s1Dist - s2Dist;
 }
 
 /** Logs role data once per tick */

@@ -4,7 +4,8 @@ import "./roles";
 import { settings } from "./init";
 
 const canDefend =
-	Turn.mySupply + (Turn.fastSqrRush ? 3 : 0) > Turn.enemyScoutPower / memory.enemySize;
+	Turn.mySupply + (Turn.fastSqrRush ? 3 : 0) > Turn.enemyScoutPower / memory.enemySize ||
+	Turn.invaders.far.length > Turn.enemyUnits.length / 2;
 const winPower = Turn.myUnits
 	.filter((s) => Utils.inRange(s, enemy_base, 300))
 	.map((s) => s.energy)
@@ -16,35 +17,37 @@ const outpostEnergizeThreat = Turn.enemyUnits
 const canWinGame =
 	winPower * 2 >= enemy_base.energy + Turn.enemyBaseDefense * enemy_base.hp;
 
-if (Turn.vsTriangles) {
-	const combatEnemies = Turn.enemyUnits.filter((e) => e.sight.enemies_beamable.length);
-	// Accounting for enemy support energizing
-	for (const e of Turn.enemyUnits) {
-		// Don't do calculation on combat units
-		if (e.sight.enemies_beamable.length) continue;
+predictEnergizes();
 
-		// Ignore if unit has no combat units in range
+/** Adjusts enemy unit energy values to match optimal energize actions */
+function predictEnergizes() {
+	const combatEnemies = Turn.enemyUnits.filter((e) => e.sight.enemies_beamable.length);
+	for (const e of Turn.enemyUnits) {
+		// Accounting for potential self-energizing
+		const nearestStar = Utils.nearest(e, Object.values(stars));
+		if (Utils.inRange(e, nearestStar)) {
+			e.energy += Math.min(e.size, nearestStar.energy);
+		}
+
+		const energizePower = Math.min(e.size, e.energy);
+		// If vs circles or being all-inned by squares,
+		// assume enemy units will always attack if an ally unit is in range
+		if (e.sight.enemies_beamable.length) {
+			if (Turn.fastSqrRush || Turn.vsCircles) e.energy -= energizePower;
+			continue;
+		}
+
+		// Accounting for enemy support energizing
+		// Ignore if support unit has no combat units in range
 		const combatInRange = e.sight.friends_beamable
 			.map((t) => spirits[t])
 			.filter((t) => combatEnemies.includes(t));
 		if (!combatInRange.length) continue;
 
 		// Cannot predict exact energizes, so assume equal distribution of energy
-		const power = Math.min(e.size, e.energy) / combatInRange.length;
-		for (let t of combatInRange) t.energy += power;
-	}
-} else if (Turn.fastSqrRush) {
-	// When being all-inned by squares, assume they will always attack a target no matter what
-	for (const e of Turn.enemyUnits) {
-		e.energy -= Math.min(e.size, e.energy);
-	}
-}
-
-// Accounting for potential self-energizing
-for (const e of Turn.enemyUnits) {
-	const nearestStar = Utils.nearest(e, Object.values(stars));
-	if (Utils.inRange(e, nearestStar)) {
-		e.energy += Math.min(e.size, nearestStar.energy);
+		const powerPerUnit = energizePower / combatInRange.length;
+		for (let t of combatInRange) t.energy += powerPerUnit;
+		e.energy -= energizePower;
 	}
 }
 
