@@ -54,22 +54,23 @@ function removeExtras() {
 	// This should be called before other extra-removing methods
 	for (const s of Turn.myUnits) {
 		const energyRatio = Utils.energyRatio(s);
-		const retreatThreshold = 0.2;
+		const refuelEarly = Turn.isAttacking && Turn.refuelAtCenter && Turn.powerRatio < 1;
+		const refuelThreshold = refuelEarly ? 0.7 : 0.2;
 		// Non-worker units with low energy should always retreat and refuel
-		if (energyRatio <= retreatThreshold && refuelable.includes(s.mark)) {
+		if (energyRatio <= refuelThreshold && refuelable.includes(s.mark)) {
 			setRole(s, "refuel");
 			continue;
 		}
 
 		// Scouts may attempt to refuel from the center at a higher cutoff
-		// Except the first one which should always be attempting to block
+		// Except the blockers which should always be attempting to block
 		if (
 			s.mark === "scout" &&
 			s !== Turn.sideBlockerScout &&
 			s !== Turn.backBlockerScout
 		) {
-			const minScoutRatio = Turn.vsSquares ? 0.5 : 0.8;
-			if (energyRatio < minScoutRatio && memory.centerStar.energy > 0) {
+			const scoutRefuelRatio = Turn.vsSquares ? 0.4 : 0.7;
+			if (energyRatio <= scoutRefuelRatio && memory.centerStar.energy > 0) {
 				setRole(s, "refuel");
 				continue;
 			}
@@ -120,13 +121,13 @@ function removeExtras() {
 
 const canDefend =
 	Turn.mySupply + (Turn.fastSqrRush ? 3 : 0) > Turn.enemyScoutPower / memory.enemySize ||
-	Turn.invaders.far.length > Turn.enemyUnits.length / 2;
+	Turn.invaders.far.length > Turn.enemyScouts.length / 2;
 const mustDefend = Turn.enemyAllIn && canDefend;
 const mustGroup =
 	Turn.enemyUnits.filter(
 		(e) => Utils.inRange(e, base, 850) || Utils.inRange(e, memory.myStar, 600)
-	).length >=
-	Turn.enemyUnits.length / 2;
+	).length >
+	Turn.enemyScouts.length / 2;
 
 function assignRoles() {
 	// ATTACKERS
@@ -134,7 +135,7 @@ function assignRoles() {
 		for (const s of Turn.myUnits) {
 			// When attacking, only other valid roles are defend and refuel
 			const isBlocker = s === Turn.backBlockerScout || s === Turn.sideBlockerScout;
-			const groupAll = Utils.inRange(enemy_base, Utils.midpoint(...Turn.myUnits), 900);
+			const groupAll = Utils.inRange(enemy_base, Utils.midpoint(...Turn.myUnits), 850);
 			const attackRoles: MarkState[] = ["defend", "attack", "refuel"];
 			const canBeAttacker = !attackRoles.includes(s.mark) && (!isBlocker || groupAll);
 

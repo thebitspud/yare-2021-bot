@@ -6,7 +6,7 @@ export function dist(from: Position | Entity, to: Position | Entity): number {
 }
 
 /**
- * Normalizes a {vec} to the length of {mag}
+ * Normalizes {vec} to the length of {mag}
  * @param vec position vector to normalize
  * @param mag (optional, default: 1) desired length (magnitude) of the output vector
  * <br>Setting {mag} to a negative number will reverse the input vector's direction

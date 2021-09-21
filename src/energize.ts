@@ -3,9 +3,11 @@ import * as Turn from "./turn";
 import "./roles";
 import { settings } from "./init";
 
+const defendSupply = Turn.mySupply + (Turn.fastSqrRush ? 3 : 0);
+const lastSpawn = defendSupply >= Turn.enemyScoutPower / memory.enemySize;
 const canDefend =
-	Turn.mySupply + (Turn.fastSqrRush ? 3 : 0) > Turn.enemyScoutPower / memory.enemySize ||
-	Turn.invaders.far.length > Turn.enemyUnits.length / 2;
+	defendSupply > Turn.enemyScoutPower / memory.enemySize ||
+	Turn.invaders.far.length > Turn.enemyScouts.length / 2;
 const winPower = Turn.myUnits
 	.filter((s) => Utils.inRange(s, enemy_base, 300))
 	.map((s) => s.energy)
@@ -202,8 +204,10 @@ export function useEnergize(s: Spirit): void {
 
 	// If no higher priority actions and is worker unit in range, energize base
 	if (Utils.inRange(s, base) && workerRoles.includes(s.mark)) {
-		const atSpawnCutoff = base.energy >= base.current_spirit_cost || base.energy === 0;
-		const stopSpawning = Turn.enemyAllIn && atSpawnCutoff && canDefend;
+		const atSpawnCutoff =
+			base.energy >= base.current_spirit_cost ||
+			base.energy < base.current_spirit_cost / 2;
+		const stopSpawning = Turn.enemyAllIn && atSpawnCutoff && (canDefend || lastSpawn);
 		// Stop energizing after a spawn cutoff if forced to defend
 		if (!stopSpawning) return energize(s, base);
 	}

@@ -8,31 +8,8 @@ const register = Roles.register;
 
 const defenderRally = getDefenderRally(Turn.nearestEnemy);
 
-/** Where to group up at to intercept given target */
-function getDefenderRally(target: Spirit): Position {
-	const starSide = Utils.dist(target, memory.myStar) + 50 < Utils.dist(target, base);
-	const objective = starSide ? memory.myStar : base;
-	const far = Turn.invaders.far;
-
-	if (Turn.enemyAllIn) {
-		const defendMidpoint = Utils.midpoint(...register.defend);
-		const enemyMidpoint = far.length ? Utils.midpoint(...far) : target;
-		// If enemy is all-inning, group all units at same spot
-		return Utils.nextPosition(
-			objective,
-			Utils.lerp(defendMidpoint, enemyMidpoint, 0.33),
-			starSide ? 150 : 120
-		);
-	} else if (far.includes(target)) {
-		// Keep defenders grouped up within range of friendly structures
-		const spacing = Math.min(Utils.dist(target, objective) / 2, 200) + 20;
-		return Utils.nextPosition(objective, target, spacing);
-	}
-
-	// Default grouping position
-	return Utils.lerp(memory.myStar, memory.loci.baseToCenter, 0.6);
-}
-
+const blockerRetreat =
+	!Turn.vsCircles && Utils.inRange(enemy_base, Utils.midpoint(...Turn.myUnits), 900);
 const scoutMidpoint = Utils.midpoint(...register.scout);
 const nearestEnemyRetaker =
 	Utils.nearest(
@@ -103,9 +80,7 @@ export function findMove(s: Spirit): void {
 
 	const groupPower = s.sight.friends_beamable
 		.map((id) => spirits[id])
-		.filter(
-			(t) => unitsInDanger.includes(t) || Utils.inRange(s, t, Turn.vsTriangles ? 40 : 30)
-		)
+		.filter((t) => unitsInDanger.includes(t) || Utils.inRange(s, t, 30))
 		.map((t) => t.energy)
 		.reduce((acc, n) => acc + n, s.energy);
 
@@ -200,6 +175,9 @@ export function findMove(s: Spirit): void {
 				if (allyPower > enemyBasePower + enemy_base.energy / 2) {
 					// If can deal HP damage, attack enemy base
 					return safeMove(s, Utils.nextPosition(enemy_base, s), 601);
+				} else if (blockerRetreat) {
+					// Allow enemy base to spawn units just before all-inning
+					return safeMove(s, Utils.nextPosition(enemy_base, towards, 500));
 				} else {
 					// Otherwise, attempt to block enemy production
 					return safeMove(s, towards, 601);
@@ -325,4 +303,38 @@ function safeMove(s: Spirit, target: Position | Entity, range?: number) {
 
 		s.move(bestMove);
 	} else s.move(target);
+}
+
+/** Where to group up at to intercept given target */
+function getDefenderRally(target: Spirit): Position {
+	const starSide = Utils.dist(target, memory.myStar) + 50 < Utils.dist(target, base);
+	const objective = starSide ? memory.myStar : base;
+	let spacing = Math.min(Utils.dist(target, objective) / 2, 200) + 20;
+
+	const far = Turn.invaders.far;
+
+	const enemyArriving = far.length > Turn.enemyScouts.length / 2;
+	if (Turn.enemyAllIn && enemyArriving) {
+		const flatSpacing = (starSide ? 150 : 125) + (Turn.vsTriangles ? 25 : 0);
+		spacing = Math.min(spacing, flatSpacing);
+	}
+
+	if (far.includes(target)) {
+		// Keep defenders grouped up within range of friendly structures
+		return Utils.nextPosition(objective, target, spacing);
+	}
+
+	// If enemy is all-inning, group additional units preemptively
+	if (Turn.enemyAllIn) {
+		const defendMidpoint = Utils.midpoint(...register.defend);
+		const enemyMidpoint = enemyArriving ? Utils.midpoint(...far) : target;
+		return Utils.nextPosition(
+			objective,
+			Utils.lerp(defendMidpoint, enemyMidpoint, 0.33),
+			spacing
+		);
+	}
+
+	// Default grouping position
+	return Utils.lerp(memory.myStar, memory.loci.baseToCenter, 0.6);
 }
