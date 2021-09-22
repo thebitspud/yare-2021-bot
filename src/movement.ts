@@ -67,13 +67,13 @@ export function findMove(s: Spirit): void {
 		nearbyEnemies
 			.map((e) => {
 				let distFactor = 1;
-				if (Utils.inRange(e, base)) distFactor = Turn.enemyAllIn ? 0.25 : 0.5;
-				else if (Utils.inRange(e, base, 400)) distFactor = Turn.enemyAllIn ? 0.6 : 1;
+				if (Utils.inRange(e, base)) distFactor = Turn.enemyAllIn ? 0 : 0.5;
+				else if (Utils.inRange(e, base, 400)) distFactor = Turn.enemyAllIn ? 0.5 : 1;
 				else if (Turn.allyOutpost) {
 					if (Utils.inRange(e, outpost)) distFactor = 0.6;
 					else if (Utils.inRange(e, outpost, 400)) distFactor = 0.8;
 				}
-				// if (Turn.isAttacking) distFactor *= 0.8;
+				if (Turn.isAttacking && Turn.refuelAtCenter) distFactor *= 0.9;
 				return e.energy * distFactor;
 			})
 			.reduce((acc, n) => acc + n, 0) * Turn.enemyShapePower;
@@ -311,15 +311,13 @@ function getDefenderRally(target: Spirit): Position {
 	const objective = starSide ? memory.myStar : base;
 	let spacing = Math.min(Utils.dist(target, objective) / 2, 200) + 20;
 
-	const far = Turn.invaders.far;
-
-	const enemyArriving = far.length > Turn.enemyScouts.length / 2;
-	if (Turn.enemyAllIn && enemyArriving) {
-		const flatSpacing = (starSide ? 150 : 125) + (Turn.vsTriangles ? 25 : 0);
+	const nearGroup = Turn.invaders.far.length || !Turn.invaders.med.length;
+	if (Turn.enemyAllIn && nearGroup) {
+		const flatSpacing = (starSide ? 150 : 120) + (Turn.vsTriangles ? 20 : 0);
 		spacing = Math.min(spacing, flatSpacing);
 	}
 
-	if (far.includes(target)) {
+	if (Turn.invaders.far.includes(target)) {
 		// Keep defenders grouped up within range of friendly structures
 		return Utils.nextPosition(objective, target, spacing);
 	}
@@ -327,7 +325,7 @@ function getDefenderRally(target: Spirit): Position {
 	// If enemy is all-inning, group additional units preemptively
 	if (Turn.enemyAllIn) {
 		const defendMidpoint = Utils.midpoint(...register.defend);
-		const enemyMidpoint = enemyArriving ? Utils.midpoint(...far) : target;
+		const enemyMidpoint = nearGroup ? Utils.midpoint(...Turn.invaders.far) : target;
 		return Utils.nextPosition(
 			objective,
 			Utils.lerp(defendMidpoint, enemyMidpoint, 0.33),

@@ -86,7 +86,7 @@ for (const e of enemyUnits) {
 
 		// Computing an overall invader threat level
 		let baseDistFactor = (1100 - Math.max(Math.min(starDist, baseDist), 200)) / 600;
-		if (baseDist > 600) baseDistFactor *= vsSquares ? 0.5 : 0.33;
+		if (baseDist > 600) baseDistFactor *= vsSquares ? 0.67 : 0.33;
 		invaders.threat += Math.max(e.size, e.energy) * baseDistFactor;
 	}
 
@@ -119,7 +119,8 @@ for (const e of enemyUnits) {
 export const allyOutpost = outpost.control === this_player_id;
 export const enemyOutpost = outpost.control !== this_player_id && outpost.energy > 0;
 export const enemyAllIn =
-	enemyScouts.length > 0.75 * enemyUnits.length && 2 * enemyScoutPower > myCapacity;
+	(enemyScouts.length > 0.75 * enemyUnits.length && 2 * enemyScoutPower > myCapacity) ||
+	(enemyScouts.length >= enemyUnits.length && enemyUnits.length);
 export const fastSqrRush = enemyAllIn && vsSquares && tick <= 90;
 export let isAttacking = ["rally", "retake", "all-in"].includes(memory.strategy);
 export const refuelAtCenter = canRefuelCenter();
@@ -319,6 +320,7 @@ function shouldRetakeOutpost(): boolean {
 function canRefuelCenter(): boolean {
 	if (memory.centerStar.active_in >= 25) return false;
 	if (memory.centerStar.energy < 5) return false;
+	if (enemyAllIn) return false;
 	if (!enemyOutpost) return true;
 	if (outpost.energy > 300) return false;
 

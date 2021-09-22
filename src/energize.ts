@@ -205,9 +205,9 @@ export function useEnergize(s: Spirit): void {
 	// If no higher priority actions and is worker unit in range, energize base
 	if (Utils.inRange(s, base) && workerRoles.includes(s.mark)) {
 		const atSpawnCutoff =
-			base.energy >= base.current_spirit_cost ||
-			base.energy < base.current_spirit_cost / 2;
-		const stopSpawning = Turn.enemyAllIn && atSpawnCutoff && (canDefend || lastSpawn);
+			(base.energy >= base.current_spirit_cost && lastSpawn) ||
+			(base.energy < base.current_spirit_cost / 2 && canDefend);
+		const stopSpawning = Turn.enemyAllIn && atSpawnCutoff;
 		// Stop energizing after a spawn cutoff if forced to defend
 		if (!stopSpawning) return energize(s, base);
 	}

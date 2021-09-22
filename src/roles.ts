@@ -178,13 +178,13 @@ function assignRoles() {
 	}
 
 	// Case handler for preparing to defend when being all-inned
-	if (Turn.enemyAllIn && mustDefend) {
-		const refuelCutoff = Turn.fastSqrRush ? 0.5 : 0.7;
+	if (mustDefend) {
+		const refuelCutoff = Turn.vsSquares ? 0.5 : 0.8;
 		const excludedRoles: MarkState[] = ["defend", "refuel"];
 
 		if (Turn.isAttacking) {
 			// Deciding between attacking and defending
-			const distBuffer = (Turn.allyOutpost ? 50 : 200) + (Turn.vsSquares ? 200 : 0);
+			const distBuffer = (Turn.allyOutpost ? 100 : 250) + (Turn.vsSquares ? 250 : 0);
 			const allyDist = Utils.dist(Utils.midpoint(...Turn.myUnits), enemy_base);
 			const enemyDist = Utils.dist(Utils.midpoint(...Turn.enemyUnits), base);
 			if (allyDist + distBuffer < enemyDist) {
@@ -193,13 +193,23 @@ function assignRoles() {
 		}
 
 		for (const s of Turn.myUnits) {
-			if (s.mark === "relay" && !mustGroup) continue;
+			if (s.mark === "relay" && s.energy > 0 && !mustGroup) continue;
 
 			if (!excludedRoles.includes(s.mark) && !Utils.inRange(s, enemy_base, 400)) {
 				setRole(s, Utils.energyRatio(s) < refuelCutoff ? "refuel" : "defend");
 			}
 
-			if (mustGroup && s.mark === "refuel" && Utils.energyRatio(s) > refuelCutoff) {
+			const enemyDist = Utils.dist(
+				Turn.enemyUnits.length ? Utils.nearest(base, Turn.enemyUnits) : enemy_base,
+				base
+			);
+			const cantReachStar = enemyDist < Utils.dist(s, memory.myStar) + 500;
+			const shouldDefend =
+				(mustGroup || !Utils.inRange(s, memory.myStar, 300)) &&
+				s.mark === "refuel" &&
+				(Utils.energyRatio(s) >= refuelCutoff ||
+					(mustGroup && cantReachStar && s.energy > 0));
+			if (shouldDefend) {
 				setRole(s, "defend");
 			}
 		}
