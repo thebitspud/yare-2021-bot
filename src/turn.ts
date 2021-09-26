@@ -78,6 +78,9 @@ for (const e of enemyUnits) {
 					// Multiply by 2 for max potential damage
 					invaders.supply += Math.min(e.size, e.energy);
 				}
+				if (starDist <= 200) {
+					invaders.threat += e.size * 2;
+				}
 				invaders.near.push(e);
 			}
 			invaders.med.push(e);
@@ -86,7 +89,7 @@ for (const e of enemyUnits) {
 
 		// Computing an overall invader threat level
 		let baseDistFactor = (1100 - Math.max(Math.min(starDist, baseDist), 200)) / 600;
-		if (baseDist > 600) baseDistFactor *= vsSquares ? 0.67 : 0.33;
+		if (baseDist > 600 && starDist > 600) baseDistFactor *= vsSquares ? 0.67 : 0.33;
 		invaders.threat += Math.max(e.size, e.energy) * baseDistFactor;
 	}
 
@@ -130,8 +133,7 @@ export let idealDefenders = getIdealDefenders();
 export let idealScouts = getIdealScouts();
 export let mustMerge: CircleSpirit[] = [];
 
-const extraScout = settings.extraScouts || settings.minScouts;
-if (tick > (vsSquares ? 50 : 25) && extraScout) idealScouts++;
+if (tick > (vsSquares ? 50 : 25) && settings.extraScouts) idealScouts++;
 export const powerRatio = myEnergy / (enemyEnergy * enemyShapePower);
 const shouldRetake = shouldRetakeOutpost();
 const canStartRetake = shouldRetake && mySupply >= settings.retakeSupply;

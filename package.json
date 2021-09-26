@@ -1,7 +1,7 @@
 {
   "name": "cerebrate-ai",
-  "version": "2.9.3",
-  "description": "A typescript yare.io circle ai designed and implemented by thebitspud, based off the template by swz.",
+  "version": "2.9.4",
+  "description": "A typescript yare.io circle AI designed and implemented by thebitspud, based off the template by swz.",
   "main": "dist/bundle.js",
   "scripts": {
     "preinstall": "git submodule update --recursive --remote --init",

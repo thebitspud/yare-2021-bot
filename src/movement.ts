@@ -66,15 +66,15 @@ export function findMove(s: Spirit): void {
 	const dangerRating =
 		nearbyEnemies
 			.map((e) => {
-				let distFactor = 1;
-				if (Utils.inRange(e, base)) distFactor = Turn.enemyAllIn ? 0 : 0.5;
-				else if (Utils.inRange(e, base, 400)) distFactor = Turn.enemyAllIn ? 0.5 : 1;
+				let enemyPower = e.energy;
+				if (Utils.inRange(e, base)) enemyPower *= Turn.enemyAllIn ? 0.1 : 0.5;
+				else if (Utils.inRange(e, base, 400)) enemyPower *= Turn.enemyAllIn ? 0.5 : 1;
 				else if (Turn.allyOutpost) {
-					if (Utils.inRange(e, outpost)) distFactor = 0.6;
-					else if (Utils.inRange(e, outpost, 400)) distFactor = 0.8;
+					if (Utils.inRange(e, outpost)) enemyPower *= 0.6;
+					else if (Utils.inRange(e, outpost, 400)) enemyPower *= 0.8;
 				}
-				if (Turn.isAttacking && Turn.refuelAtCenter) distFactor *= 0.9;
-				return e.energy * distFactor;
+				if (Turn.isAttacking && Turn.refuelAtCenter) enemyPower *= 0.9;
+				return enemyPower;
 			})
 			.reduce((acc, n) => acc + n, 0) * Turn.enemyShapePower;
 
@@ -307,11 +307,11 @@ function safeMove(s: Spirit, target: Position | Entity, range?: number) {
 
 /** Where to group up at to intercept given target */
 function getDefenderRally(target: Spirit): Position {
-	const starSide = Utils.dist(target, memory.myStar) + 50 < Utils.dist(target, base);
+	const starSide = Utils.dist(target, memory.myStar) < Utils.dist(target, base);
 	const objective = starSide ? memory.myStar : base;
 	let spacing = Math.min(Utils.dist(target, objective) / 2, 200) + 20;
 
-	const nearGroup = Turn.invaders.far.length || !Turn.invaders.med.length;
+	const nearGroup = Turn.invaders.far.length;
 	if (Turn.enemyAllIn && nearGroup) {
 		const flatSpacing = (starSide ? 150 : 120) + (Turn.vsTriangles ? 20 : 0);
 		spacing = Math.min(spacing, flatSpacing);

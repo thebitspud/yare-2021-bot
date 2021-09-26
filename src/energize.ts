@@ -25,10 +25,11 @@ predictEnergizes();
 function predictEnergizes() {
 	const combatEnemies = Turn.enemyUnits.filter((e) => e.sight.enemies_beamable.length);
 	for (const e of Turn.enemyUnits) {
-		// Accounting for potential self-energizing
+		// Accounting for potential enemy self-energizing
 		const nearestStar = Utils.nearest(e, Object.values(stars));
 		if (Utils.inRange(e, nearestStar)) {
 			e.energy += Math.min(e.size, nearestStar.energy);
+			continue;
 		}
 
 		const energizePower = Math.min(e.size, e.energy);

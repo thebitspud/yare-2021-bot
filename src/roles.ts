@@ -104,7 +104,7 @@ function removeExtras() {
 	}
 
 	// SCOUTS
-	while (register.scout.length > Math.max(Turn.idealScouts, 0) + 1) {
+	while (register.scout.length > Math.max(Turn.idealScouts, 0)) {
 		const removable = register.scout.filter((s) => !Utils.inRange(s, enemy_base, 600));
 		if (removable.length) setRole(Utils.nearest(base, removable), "idle");
 		else break;
@@ -261,7 +261,7 @@ function optimizeWorkers() {
 /** Assigns defenders to match enemy threats accordingly */
 function matchDefenders() {
 	// Sort enemies by adjusted distance
-	const enemyThreats = Turn.invaders.med.sort(distDiff);
+	const enemyThreats = Turn.invaders.far.sort(distDiff);
 	// Clone defender array
 	let availableSpirits = [...register.defend];
 
@@ -283,8 +283,8 @@ function matchDefenders() {
 
 /** Sorts enemies from highest to lowest threat based on distance to my base/star */
 function distDiff(s1: Spirit, s2: Spirit) {
-	const s1Dist = Math.min(Utils.dist(s1, base), Utils.dist(s1, memory.myStar) + 50);
-	const s2Dist = Math.min(Utils.dist(s2, base), Utils.dist(s2, memory.myStar) + 50);
+	const s1Dist = Math.min(Utils.dist(s1, base), Utils.dist(s1, memory.myStar));
+	const s2Dist = Math.min(Utils.dist(s2, base), Utils.dist(s2, memory.myStar));
 	return s1Dist - s2Dist;
 }
 

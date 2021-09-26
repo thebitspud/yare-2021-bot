@@ -42,13 +42,13 @@ if (memory.init !== BOT_VERSION) {
 }
 
 export const settings = {
-	debug: true,
-	allInSupply: 101,
+	debug: false,
+	allInSupply: 51,
 	allInGroupSize: 0.75, // float in [0, 1]
 	doRetakes: true,
 	retakeSupply: 51, // should be <= allInSupply
 	retakeGroupSize: 0.6, // float in [0, 1]
-	maxContestRatio: 0.75,
+	maxContestRatio: 0.75, // float in [0, 1]
 	haulRelayRatio: 2.6,
 	idealMergeSize: 1, // 1 to not merge
 	maxMergeSize: 16, // vs triangle explosions
